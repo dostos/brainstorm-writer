@@ -54,3 +54,9 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
+
+/* Inline diff original text highlight */
+.cm-inline-diff-original {
+  background: rgba(200, 150, 80, 0.15);
+  border-bottom: 1px dashed rgba(200, 150, 80, 0.4);
+}
