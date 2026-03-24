@@ -88,8 +88,16 @@ export class FileManager {
   }
 
   // Search for text in .tex files, return { file, line } of first match
+  // Prioritize non-backup directories to avoid matching copies in backup/old/archive
   searchInTexFiles(dirPath: string, searchText: string): { file: string; line: number } | null {
     const texFiles = this.findTexFiles(dirPath)
+    // Sort: deprioritize files in backup/old/archive/bak directories
+    const backupPattern = /[/\\](backup|old|archive|bak|deprecated|_backup)[/\\]/i
+    texFiles.sort((a, b) => {
+      const aIsBackup = backupPattern.test(a) ? 1 : 0
+      const bIsBackup = backupPattern.test(b) ? 1 : 0
+      return aIsBackup - bIsBackup
+    })
     // Normalize: collapse whitespace for fuzzy matching
     const needle = searchText.replace(/\s+/g, ' ').trim()
     // Try progressively shorter snippets (first 80 chars, 40, 20)

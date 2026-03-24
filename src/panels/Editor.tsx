@@ -204,6 +204,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
   // Mount editor for a specific file — no reactive deps to avoid spurious re-mounts
   const mountEditorRef = useRef((file: string, content: string) => {
+    console.log('[Editor] mountEditor called for:', file, 'content length:', content.length, 'hasSavedState:', editorStatesRef.current.has(file))
     if (!containerRef.current) return
 
     // Save current state before destroying
@@ -240,6 +241,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     previousActiveFileRef.current = activeFile
 
     // If we have cached content or saved state, mount immediately
+    console.log('[Editor] activeFile changed to:', activeFile, 'hasSavedState:', editorStatesRef.current.has(activeFile), 'hasCachedContent:', !!fileContents.current[activeFile])
+
     if (editorStatesRef.current.has(activeFile) || fileContents.current[activeFile]) {
       mountEditorRef.current(activeFile, fileContents.current[activeFile] || '')
       return
@@ -247,8 +250,11 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
     // First open: load file content
     const load = async () => {
+      console.log('[Editor] loading file:', activeFile)
       const content = await window.electronAPI.readFile(activeFile)
-      if (useEditorStore.getState().activeFile !== activeFile) return
+      const currentActive = useEditorStore.getState().activeFile
+      console.log('[Editor] file loaded:', activeFile, 'currentActive:', currentActive)
+      if (currentActive !== activeFile) return
       fileContents.current[activeFile] = content
       mountEditorRef.current(activeFile, content)
     }

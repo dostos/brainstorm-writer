@@ -353,7 +353,7 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
     if (e.detail < 2) return
 
-    // First try SyncTeX
+    // SyncTeX inverse search only — no text search fallback (avoids backup file confusion)
     const container = e.currentTarget
     const rect = container.getBoundingClientRect()
     const x = (e.clientX - rect.left) / effectiveScale
@@ -363,22 +363,8 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     if (synctexResult) {
       openFile(synctexResult.file)
       setActiveFile(synctexResult.file)
-      return
-    }
-
-    // Fallback: search selected text in .tex files
-    if (!projectPath) return
-    const sel = document.getSelection()
-    const selectedText = sel?.toString().trim()
-    if (!selectedText || selectedText.length < 5) return
-
-    const searchResult = await window.electronAPI.searchTex(projectPath, selectedText)
-    if (searchResult) {
-      openFile(searchResult.file)
-      setActiveFile(searchResult.file)
-      // Jump to the matching line after a small delay (let editor load the file)
       setTimeout(() => {
-        useEditorStore.getState().jumpToLine(searchResult.line)
+        useEditorStore.getState().jumpToLine(synctexResult.line || 1)
       }, 300)
     }
   }, [effectiveScale, openFile, setActiveFile, projectPath])
