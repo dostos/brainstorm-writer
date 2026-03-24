@@ -6,7 +6,7 @@ import { EditorState, Compartment } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { StreamLanguage } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search'
-import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
+import { autocompletion, CompletionContext, CompletionResult, snippetCompletion } from '@codemirror/autocomplete'
 import { useEditorStore } from '../stores/editor-store'
 
 // Simple LaTeX syntax highlighting via StreamLanguage
@@ -24,6 +24,129 @@ const latexMode = StreamLanguage.define({
 
 // Compartment for hot-swapping lineWrapping without rebuilding entire state
 const wrapCompartment = new Compartment()
+
+// LaTeX command completions using snippetCompletion for tabstop support
+// Template syntax: #{N} for tabstops, #{} for cursor after completion
+const LATEX_COMMANDS = [
+  // Document structure
+  snippetCompletion('\\documentclass{#{1}}', { label: '\\documentclass', detail: 'Document class', type: 'keyword' }),
+  snippetCompletion('\\usepackage{#{1}}', { label: '\\usepackage', detail: 'Import package', type: 'keyword' }),
+  snippetCompletion('\\begin{#{1}}\n\t#{}\n\\end{#{1}}', { label: '\\begin', detail: 'Begin environment', type: 'keyword' }),
+  snippetCompletion('\\end{#{1}}', { label: '\\end', detail: 'End environment', type: 'keyword' }),
+  { label: '\\maketitle', type: 'keyword', detail: 'Generate title' },
+  { label: '\\tableofcontents', type: 'keyword', detail: 'Table of contents' },
+  // Sectioning
+  snippetCompletion('\\section{#{1}}', { label: '\\section', detail: 'Section heading', type: 'keyword' }),
+  snippetCompletion('\\subsection{#{1}}', { label: '\\subsection', detail: 'Subsection heading', type: 'keyword' }),
+  snippetCompletion('\\subsubsection{#{1}}', { label: '\\subsubsection', detail: 'Subsubsection heading', type: 'keyword' }),
+  snippetCompletion('\\paragraph{#{1}}', { label: '\\paragraph', detail: 'Paragraph heading', type: 'keyword' }),
+  snippetCompletion('\\subparagraph{#{1}}', { label: '\\subparagraph', detail: 'Subparagraph heading', type: 'keyword' }),
+  snippetCompletion('\\chapter{#{1}}', { label: '\\chapter', detail: 'Chapter heading', type: 'keyword' }),
+  snippetCompletion('\\part{#{1}}', { label: '\\part', detail: 'Part heading', type: 'keyword' }),
+  // Text formatting
+  snippetCompletion('\\textbf{#{1}}', { label: '\\textbf', detail: 'Bold text', type: 'keyword' }),
+  snippetCompletion('\\textit{#{1}}', { label: '\\textit', detail: 'Italic text', type: 'keyword' }),
+  snippetCompletion('\\emph{#{1}}', { label: '\\emph', detail: 'Emphasized text', type: 'keyword' }),
+  snippetCompletion('\\underline{#{1}}', { label: '\\underline', detail: 'Underlined text', type: 'keyword' }),
+  snippetCompletion('\\texttt{#{1}}', { label: '\\texttt', detail: 'Typewriter (monospace) text', type: 'keyword' }),
+  snippetCompletion('\\textrm{#{1}}', { label: '\\textrm', detail: 'Roman text', type: 'keyword' }),
+  snippetCompletion('\\textsf{#{1}}', { label: '\\textsf', detail: 'Sans-serif text', type: 'keyword' }),
+  snippetCompletion('\\textsc{#{1}}', { label: '\\textsc', detail: 'Small caps text', type: 'keyword' }),
+  snippetCompletion('\\text{#{1}}', { label: '\\text', detail: 'Text in math mode', type: 'keyword' }),
+  // References and citations
+  snippetCompletion('\\cite{#{1}}', { label: '\\cite', detail: 'Citation', type: 'keyword' }),
+  snippetCompletion('\\ref{#{1}}', { label: '\\ref', detail: 'Reference', type: 'keyword' }),
+  snippetCompletion('\\label{#{1}}', { label: '\\label', detail: 'Label', type: 'keyword' }),
+  snippetCompletion('\\pageref{#{1}}', { label: '\\pageref', detail: 'Page reference', type: 'keyword' }),
+  snippetCompletion('\\eqref{#{1}}', { label: '\\eqref', detail: 'Equation reference', type: 'keyword' }),
+  snippetCompletion('\\bibitem{#{1}}', { label: '\\bibitem', detail: 'Bibliography item', type: 'keyword' }),
+  snippetCompletion('\\bibliography{#{1}}', { label: '\\bibliography', detail: 'Bibliography file', type: 'keyword' }),
+  snippetCompletion('\\bibliographystyle{#{1}}', { label: '\\bibliographystyle', detail: 'Bibliography style', type: 'keyword' }),
+  // Figures and tables
+  snippetCompletion('\\includegraphics[width=#{1}\\linewidth]{#{2}}', { label: '\\includegraphics', detail: 'Include image', type: 'keyword' }),
+  snippetCompletion('\\caption{#{1}}', { label: '\\caption', detail: 'Caption', type: 'keyword' }),
+  { label: '\\centering', type: 'keyword', detail: 'Center content' },
+  { label: '\\hline', type: 'keyword', detail: 'Horizontal line in table' },
+  { label: '\\toprule', type: 'keyword', detail: 'Top rule (booktabs)' },
+  { label: '\\midrule', type: 'keyword', detail: 'Middle rule (booktabs)' },
+  { label: '\\bottomrule', type: 'keyword', detail: 'Bottom rule (booktabs)' },
+  snippetCompletion('\\multicolumn{#{1}}{#{2}}{#{3}}', { label: '\\multicolumn', detail: 'Span columns', type: 'keyword' }),
+  snippetCompletion('\\multirow{#{1}}{*}{#{2}}', { label: '\\multirow', detail: 'Span rows', type: 'keyword' }),
+  // List items
+  { label: '\\item', apply: '\\item ', type: 'keyword', detail: 'List item' },
+  // Math
+  snippetCompletion('\\frac{#{1}}{#{2}}', { label: '\\frac', detail: 'Fraction', type: 'keyword' }),
+  snippetCompletion('\\sqrt{#{1}}', { label: '\\sqrt', detail: 'Square root', type: 'keyword' }),
+  snippetCompletion('\\sum_{#{1}}^{#{2}}', { label: '\\sum', detail: 'Summation', type: 'keyword' }),
+  snippetCompletion('\\int_{#{1}}^{#{2}}', { label: '\\int', detail: 'Integral', type: 'keyword' }),
+  snippetCompletion('\\prod_{#{1}}^{#{2}}', { label: '\\prod', detail: 'Product', type: 'keyword' }),
+  snippetCompletion('\\lim_{#{1}}', { label: '\\lim', detail: 'Limit', type: 'keyword' }),
+  { label: '\\infty', type: 'keyword', detail: 'Infinity symbol' },
+  { label: '\\partial', type: 'keyword', detail: 'Partial derivative symbol' },
+  { label: '\\nabla', type: 'keyword', detail: 'Nabla/gradient symbol' },
+  snippetCompletion('\\mathbb{#{1}}', { label: '\\mathbb', detail: 'Blackboard bold', type: 'keyword' }),
+  snippetCompletion('\\mathcal{#{1}}', { label: '\\mathcal', detail: 'Calligraphic font', type: 'keyword' }),
+  snippetCompletion('\\mathrm{#{1}}', { label: '\\mathrm', detail: 'Math roman font', type: 'keyword' }),
+  snippetCompletion('\\overline{#{1}}', { label: '\\overline', detail: 'Overline', type: 'keyword' }),
+  snippetCompletion('\\hat{#{1}}', { label: '\\hat', detail: 'Hat accent', type: 'keyword' }),
+  snippetCompletion('\\vec{#{1}}', { label: '\\vec', detail: 'Vector arrow', type: 'keyword' }),
+  // Macros
+  snippetCompletion('\\newcommand{\\#{1}}{#{2}}', { label: '\\newcommand', detail: 'Define new command', type: 'keyword' }),
+  snippetCompletion('\\renewcommand{\\#{1}}{#{2}}', { label: '\\renewcommand', detail: 'Redefine command', type: 'keyword' }),
+  snippetCompletion('\\newenvironment{#{1}}{#{2}}{#{3}}', { label: '\\newenvironment', detail: 'Define new environment', type: 'keyword' }),
+  // Misc
+  snippetCompletion('\\footnote{#{1}}', { label: '\\footnote', detail: 'Footnote', type: 'keyword' }),
+  snippetCompletion('\\url{#{1}}', { label: '\\url', detail: 'URL', type: 'keyword' }),
+  snippetCompletion('\\href{#{1}}{#{2}}', { label: '\\href', detail: 'Hyperlink', type: 'keyword' }),
+  { label: '\\noindent', type: 'keyword', detail: 'Suppress indentation' },
+  { label: '\\newline', type: 'keyword', detail: 'New line' },
+  { label: '\\linebreak', type: 'keyword', detail: 'Line break' },
+  { label: '\\clearpage', type: 'keyword', detail: 'Clear page' },
+  { label: '\\newpage', type: 'keyword', detail: 'New page' },
+  snippetCompletion('\\vspace{#{1}}', { label: '\\vspace', detail: 'Vertical space', type: 'keyword' }),
+  snippetCompletion('\\hspace{#{1}}', { label: '\\hspace', detail: 'Horizontal space', type: 'keyword' }),
+  snippetCompletion('\\input{#{1}}', { label: '\\input', detail: 'Input file', type: 'keyword' }),
+  snippetCompletion('\\include{#{1}}', { label: '\\include', detail: 'Include file', type: 'keyword' }),
+]
+
+const LATEX_ENVIRONMENTS = [
+  'equation', 'equation*', 'align', 'align*', 'figure', 'figure*',
+  'table', 'tabular', 'itemize', 'enumerate', 'description', 'abstract',
+  'document', 'theorem', 'proof', 'lemma', 'definition', 'corollary',
+  'lstlisting', 'verbatim', 'minipage', 'center', 'flushleft', 'flushright',
+]
+
+function latexCompletions(context: CompletionContext): CompletionResult | null {
+  // Match \begin{ to offer environment names
+  const beginMatch = context.matchBefore(/\\begin\{[a-zA-Z*]*/)
+  if (beginMatch) {
+    const prefix = beginMatch.text.slice('\\begin{'.length)
+    const from = beginMatch.from + '\\begin{'.length
+    return {
+      from,
+      options: LATEX_ENVIRONMENTS
+        .filter((e) => e.startsWith(prefix))
+        .map((e) => ({
+          label: e,
+          apply: e + '}',
+          type: 'keyword',
+        })),
+      validFor: /^[a-zA-Z*]*$/,
+    }
+  }
+
+  // Match \ for LaTeX commands
+  const cmdMatch = context.matchBefore(/\\[a-zA-Z]*/)
+  if (cmdMatch) {
+    return {
+      from: cmdMatch.from,
+      options: LATEX_COMMANDS,
+      validFor: /^\\[a-zA-Z]*$/,
+    }
+  }
+
+  return null
+}
 
 export const Editor: React.FC<IDockviewPanelProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,6 +201,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         search(),
         keymap.of(searchKeymap),
         wrapCompartment.of(wordWrapRef.current ? EditorView.lineWrapping : []),
+        autocompletion({ override: [latexCompletions] }),
         EditorView.updateListener.of((update) => {
           if (update.selectionSet) {
             const sel = update.state.selection.main
