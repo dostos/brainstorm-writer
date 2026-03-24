@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { DockviewReact, DockviewReadyEvent, IDockviewPanelProps } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { FileTree } from './panels/FileTree'
@@ -6,6 +6,7 @@ import { Editor } from './panels/Editor'
 import { PdfViewer } from './panels/PdfViewer'
 import { AiPanel } from './panels/AiPanel'
 import { SettingsPanel } from './components/SettingsPanel'
+import { useSettingsStore } from './stores/settings-store'
 
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   fileTree: FileTree,
@@ -17,6 +18,10 @@ const components: Record<string, React.FC<IDockviewPanelProps>> = {
 
 export default function App() {
   const dockviewApiRef = useRef<any>(null)
+
+  useEffect(() => {
+    useSettingsStore.getState().loadFromMain()
+  }, [])
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     dockviewApiRef.current = event.api
