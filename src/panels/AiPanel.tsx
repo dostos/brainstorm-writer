@@ -7,12 +7,40 @@ import { ProviderBadge } from '../components/ProviderBadge'
 import { PromptInput } from '../components/PromptInput'
 import { DiffView } from '../components/DiffView'
 
+// Parse the structured AI response format:
+//   === REVISED ===
+//   (revised text)
+//   === COMMENTS ===
+//   (bullet points)
+//   === SUGGESTIONS ===
+//   (bullet points)
+export function parseAiResponse(text: string): {
+  revised: string
+  comments: string
+  suggestions: string
+  raw: string
+} {
+  const revisedMatch = text.match(/===\s*REVISED\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*SUGGESTIONS\s*===|$)/)
+  if (!revisedMatch) {
+    return { revised: '', comments: '', suggestions: '', raw: text }
+  }
+  const commentsMatch = text.match(/===\s*COMMENTS\s*===\s*([\s\S]*?)(?===\s*SUGGESTIONS\s*===|===\s*REVISED\s*===|$)/)
+  const suggestionsMatch = text.match(/===\s*SUGGESTIONS\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*REVISED\s*===|$)/)
+  return {
+    revised: revisedMatch[1].trim(),
+    comments: commentsMatch ? commentsMatch[1].trim() : '',
+    suggestions: suggestionsMatch ? suggestionsMatch[1].trim() : '',
+    raw: text,
+  }
+}
+
 export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
   const replaceSelection = useEditorStore((s) => s.replaceSelection)
   const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
   const { systemPrompt, contextScope, models, contextTemplate, providerModes } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, { comments?: boolean; suggestions?: boolean }>>({})
   const lastPromptRef = useRef<string>('')
 
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
@@ -198,18 +226,84 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
                   Retry
                 </button>
               </div>
-            ) : showDiff[result.provider] && selection ? (
-              <DiffView original={selection.text} suggested={result.text} />
-            ) : (
-              <div style={{ color: '#ccc', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {result.text || (result.done ? '(empty response)' : '⏳ Generating...')}
-              </div>
-            )}
+            ) : (() => {
+              const parsed = parseAiResponse(result.text)
+              const isStructured = Boolean(parsed.revised)
+              const providerCollapsed = collapsedSections[result.provider] || {}
+
+              if (showDiff[result.provider] && selection) {
+                const diffTarget = isStructured ? parsed.revised : result.text
+                return <DiffView original={selection.text} suggested={diffTarget} />
+              }
+
+              if (!result.text && !result.done) {
+                return <div style={{ color: '#888', fontSize: 12 }}>Generating...</div>
+              }
+
+              if (!isStructured) {
+                return (
+                  <div style={{ color: '#ccc', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {result.text || (result.done ? '(empty response)' : '')}
+                  </div>
+                )
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* REVISED section */}
+                  {parsed.revised && (
+                    <div>
+                      <div style={{ color: '#6c9', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Revised</div>
+                      <div style={{ color: '#ddd', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', background: '#1e1e38', borderRadius: 4, padding: '6px 8px' }}>
+                        {parsed.revised}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* COMMENTS section */}
+                  {parsed.comments && (
+                    <div>
+                      <div
+                        onClick={() => setCollapsedSections((s) => ({ ...s, [result.provider]: { ...providerCollapsed, comments: !providerCollapsed.comments } }))}
+                        style={{ color: '#999', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        Comments {providerCollapsed.comments ? '▶' : '▼'}
+                      </div>
+                      {!providerCollapsed.comments && (
+                        <div style={{ color: '#aaa', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                          {parsed.comments}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SUGGESTIONS section */}
+                  {parsed.suggestions && (
+                    <div>
+                      <div
+                        onClick={() => setCollapsedSections((s) => ({ ...s, [result.provider]: { ...providerCollapsed, suggestions: !providerCollapsed.suggestions } }))}
+                        style={{ color: '#777', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        Suggestions {providerCollapsed.suggestions ? '▶' : '▼'}
+                      </div>
+                      {!providerCollapsed.suggestions && (
+                        <div style={{ color: '#888', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                          {parsed.suggestions}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {result.done && !result.error && (
               <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                 <button
-                  onClick={() => handleApply(result.text)}
+                  onClick={() => {
+                    const parsed = parseAiResponse(result.text)
+                    handleApply(parsed.revised || result.text)
+                  }}
                   style={{ background: '#4a4', color: '#fff', border: 'none', padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer' }}
                 >
                   Apply
