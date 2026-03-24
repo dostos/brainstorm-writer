@@ -112,12 +112,22 @@ export default function App() {
   const onReady = useCallback((event: DockviewReadyEvent) => {
     dockviewApiRef.current = event.api
 
+    // Overleaf-style layout: [Explorer+AI | Editor | PDF]
     const fileTreePanel = event.api.addPanel({
       id: 'fileTree',
       component: 'fileTree',
       title: 'Explorer',
     })
 
+    // AI panel as a tab alongside Explorer (same group, left column)
+    event.api.addPanel({
+      id: 'aiPanel',
+      component: 'aiPanel',
+      title: 'AI Assistant',
+      position: { referencePanel: fileTreePanel, direction: 'within' },
+    })
+
+    // Editor in the center
     const editorPanel = event.api.addPanel({
       id: 'editor',
       component: 'editor',
@@ -125,22 +135,16 @@ export default function App() {
       position: { referencePanel: fileTreePanel, direction: 'right' },
     })
 
+    // PDF on the right
     event.api.addPanel({
       id: 'pdfViewer',
       component: 'pdfViewer',
       title: 'PDF Preview',
-      position: { referencePanel: editorPanel, direction: 'below' },
-    })
-
-    event.api.addPanel({
-      id: 'aiPanel',
-      component: 'aiPanel',
-      title: 'AI Assistant',
       position: { referencePanel: editorPanel, direction: 'right' },
     })
 
-    // Set initial sizes
-    event.api.getGroup(fileTreePanel)?.api.setSize({ width: 200 })
+    // Set initial sizes — left panel narrower, editor and PDF split the rest
+    event.api.getGroup(fileTreePanel)?.api.setSize({ width: 300 })
   }, [])
 
   const buildButtonColor = flashGreen ? '#4caf50' : buildStatus === 'error' ? '#f44336' : '#888'
