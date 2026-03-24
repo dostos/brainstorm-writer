@@ -37,11 +37,12 @@ export function parseAiResponse(text: string): {
 export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
   const replaceSelection = useEditorStore((s) => s.replaceSelection)
-  const { results, isLoading, selectedProviders, conversationHistory, startRequest, appendChunk, finishProvider, setSelectedProviders, addToHistory, clearHistory } = useAiStore()
+  const { results, isLoading, selectedProviders, conversationHistory, startRequest, retryProvider, appendChunk, finishProvider, setSelectedProviders, addToHistory, clearHistory } = useAiStore()
   const { systemPrompt, contextScope, models, contextTemplate, providerModes } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
   const [collapsedSections, setCollapsedSections] = useState<Record<string, { comments?: boolean; suggestions?: boolean }>>({})
   const lastPromptRef = useRef<string>('')
+  const lastSelectionRef = useRef<{ text: string; from: number; to: number } | null>(null)
 
   // Track which provider was first to finish (to add its response to history)
   const firstDoneRef = useRef<string | null>(null)
@@ -49,7 +50,6 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
   // Use refs to avoid re-registering the listener on every render
   useEffect(() => {
-    firstDoneRef.current = null
     const cleanup = window.electronAPI.onAiStream((data) => {
       if (data.type === 'done') {
         const store = useAiStore.getState()
@@ -73,6 +73,8 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
 
   const handleSend = useCallback(async (userPrompt: string) => {
     lastPromptRef.current = userPrompt
+    lastSelectionRef.current = selection ? { ...selection } : null
+    firstDoneRef.current = null
     startRequest(selectedProviders)
 
     // Add the user prompt to conversation history
@@ -130,7 +132,12 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   }, [selection, selectedProviders, systemPrompt, contextScope, contextTemplate, models, startRequest, addToHistory])
 
   const handleApply = useCallback((text: string) => {
-    replaceSelection(text)
+    const saved = lastSelectionRef.current
+    if (saved) {
+      replaceSelection(text, saved.from, saved.to)
+    } else {
+      replaceSelection(text)
+    }
   }, [replaceSelection])
 
   const toggleProvider = (provider: string) => {
@@ -189,7 +196,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
       )}
 
       {/* Prompt input */}
-      <PromptInput onSubmit={handleSend} disabled={isLoading} />
+      <PromptInput onSubmit={handleSend} disabled={isLoading} providerCount={selectedProviders.length} />
       {isLoading && (
         <button
           onClick={() => {
@@ -222,7 +229,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
                     if (!userPrompt) return
                     const { selection: currentSelection, activeFile, openFiles } = useEditorStore.getState()
                     const { systemPrompt: sp, contextScope: cs, models: m, contextTemplate: ct, providerModes: pm } = useSettingsStore.getState()
-                    startRequest([provider])
+                    retryProvider(provider)
                     let context = ''
                     if (cs === 'section' && activeFile) {
                       context = await window.electronAPI.readFile(activeFile)

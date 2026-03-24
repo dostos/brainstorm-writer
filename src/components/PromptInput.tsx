@@ -5,9 +5,10 @@ import { useAiStore } from '../stores/ai-store'
 interface Props {
   onSubmit: (prompt: string) => void
   disabled: boolean
+  providerCount?: number
 }
 
-export const PromptInput: React.FC<Props> = ({ onSubmit, disabled }) => {
+export const PromptInput: React.FC<Props> = ({ onSubmit, disabled, providerCount = 1 }) => {
   const [prompt, setPrompt] = useState('')
   const { savedPrompts, contextScope } = useSettingsStore()
   const setSettings = useSettingsStore((s) => s.setSettings)
@@ -100,7 +101,7 @@ export const PromptInput: React.FC<Props> = ({ onSubmit, disabled }) => {
           fontSize: 12,
         }}
       >
-        {disabled ? 'Generating...' : 'Send to All ▶'}
+        {disabled ? 'Generating...' : providerCount === 1 ? 'Send ▶' : `Send to ${providerCount} ▶`}
       </button>
     </div>
   )

@@ -19,6 +19,7 @@ interface AiState {
   conversationHistory: ConversationMessage[]
   pendingPrompt: string | null
   startRequest: (providers: string[]) => void
+  retryProvider: (provider: string) => void
   appendChunk: (provider: string, chunk: string) => void
   finishProvider: (provider: string, error?: string) => void
   clearResults: () => void
@@ -39,15 +40,28 @@ export const useAiStore = create<AiState>()((set) => ({
       isLoading: true,
       results: Object.fromEntries(providers.map((p) => [p, { provider: p, text: '', done: false }])),
     }),
-  appendChunk: (provider, chunk) =>
+  retryProvider: (provider) =>
     set((state) => ({
+      isLoading: true,
       results: {
         ...state.results,
-        [provider]: { ...state.results[provider], text: state.results[provider].text + chunk },
+        [provider]: { provider, text: '', done: false },
       },
     })),
+  appendChunk: (provider, chunk) =>
+    set((state) => {
+      const existing = state.results[provider]
+      if (!existing) return state
+      return {
+        results: {
+          ...state.results,
+          [provider]: { ...existing, text: existing.text + chunk },
+        },
+      }
+    }),
   finishProvider: (provider, error) =>
     set((state) => {
+      if (!state.results[provider]) return state
       const updated = {
         ...state.results,
         [provider]: { ...state.results[provider], done: true, error },
