@@ -312,22 +312,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
     useAiStore.getState().startRequest([provider])
 
-    try {
-      await window.electronAPI.aiRequest({
-        providers: [provider],
-        systemPrompt: settings.systemPrompt,
-        context,
-        selectedText,
-        userPrompt: prompt,
-        models: settings.models,
-        providerModes: settings.providerModes,
-      })
-    } catch (err: any) {
-      useAiStore.getState().finishProvider(provider, err.message || 'Request failed')
-      return
-    }
-
-    // Subscribe to ai-store for the provider's result
+    // Subscribe BEFORE sending request — aiRequest awaits until all providers finish,
+    // so streaming events arrive during the await, not after
     const unsubscribe = useAiStore.subscribe((state) => {
       const result = state.results[provider]
       if (result?.done && !result.error) {
@@ -359,6 +345,21 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         })
       }
     })
+
+    try {
+      await window.electronAPI.aiRequest({
+        providers: [provider],
+        systemPrompt: settings.systemPrompt,
+        context,
+        selectedText,
+        userPrompt: prompt,
+        models: settings.models,
+        providerModes: settings.providerModes,
+      })
+    } catch (err: any) {
+      unsubscribe()
+      useAiStore.getState().finishProvider(provider, err.message || 'Request failed')
+    }
   }, [])
 
   // Keep handleInlineAiRequestRef in sync
