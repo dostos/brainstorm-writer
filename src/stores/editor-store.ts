@@ -12,6 +12,7 @@ interface EditorState {
   selection: Selection | null
   pendingReplacement: string | null
   pendingJumpLine: number | null
+  dirtyFiles: Set<string>
   setActiveFile: (file: string) => void
   setSelection: (selection: Selection | null) => void
   openFile: (file: string) => void
@@ -20,6 +21,8 @@ interface EditorState {
   clearReplacement: () => void
   jumpToLine: (line: number) => void
   clearJump: () => void
+  markDirty: (file: string) => void
+  markClean: (file: string) => void
 }
 
 export const useEditorStore = create<EditorState>()((set) => ({
@@ -28,6 +31,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
   selection: null,
   pendingReplacement: null,
   pendingJumpLine: null,
+  dirtyFiles: new Set<string>(),
   setActiveFile: (file) => set({ activeFile: file }),
   setSelection: (selection) => set({ selection }),
   openFile: (file) =>
@@ -36,12 +40,29 @@ export const useEditorStore = create<EditorState>()((set) => ({
       activeFile: file,
     })),
   closeFile: (file) =>
-    set((state) => ({
-      openFiles: state.openFiles.filter((f) => f !== file),
-      activeFile: state.activeFile === file ? state.openFiles.find((f) => f !== file) || null : state.activeFile,
-    })),
+    set((state) => {
+      const newDirty = new Set(state.dirtyFiles)
+      newDirty.delete(file)
+      return {
+        openFiles: state.openFiles.filter((f) => f !== file),
+        activeFile: state.activeFile === file ? state.openFiles.find((f) => f !== file) || null : state.activeFile,
+        dirtyFiles: newDirty,
+      }
+    }),
   replaceSelection: (text) => set({ pendingReplacement: text }),
   clearReplacement: () => set({ pendingReplacement: null }),
   jumpToLine: (line) => set({ pendingJumpLine: line }),
   clearJump: () => set({ pendingJumpLine: null }),
+  markDirty: (file) =>
+    set((state) => {
+      const newDirty = new Set(state.dirtyFiles)
+      newDirty.add(file)
+      return { dirtyFiles: newDirty }
+    }),
+  markClean: (file) =>
+    set((state) => {
+      const newDirty = new Set(state.dirtyFiles)
+      newDirty.delete(file)
+      return { dirtyFiles: newDirty }
+    }),
 }))

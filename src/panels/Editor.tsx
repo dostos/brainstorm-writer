@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
-import { EditorView, basicSetup } from 'codemirror'
+import { basicSetup } from 'codemirror'
+import { EditorView, keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { StreamLanguage } from '@codemirror/language'
+import { search, searchKeymap } from '@codemirror/search'
 import { useEditorStore } from '../stores/editor-store'
 
 // Simple LaTeX syntax highlighting via StreamLanguage
@@ -26,6 +28,9 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const { activeFile, openFiles, setSelection, setActiveFile, closeFile } = useEditorStore()
   const pendingReplacement = useEditorStore((s) => s.pendingReplacement)
   const clearReplacement = useEditorStore((s) => s.clearReplacement)
+  const markDirty = useEditorStore((s) => s.markDirty)
+  const markClean = useEditorStore((s) => s.markClean)
+  const dirtyFiles = useEditorStore((s) => s.dirtyFiles)
   const fileContents = useRef<Record<string, string>>({})
 
   // Load file content when active file or wordWrap changes
@@ -54,6 +59,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         basicSetup,
         oneDark,
         latexMode,
+        search(),
+        keymap.of(searchKeymap),
         ...(wordWrap ? [EditorView.lineWrapping] : []),
         EditorView.updateListener.of((update) => {
           if (update.selectionSet) {
@@ -65,9 +72,10 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
               setSelection(null)
             }
           }
-          // Track content changes
+          // Track content changes and mark file dirty
           if (update.docChanged && activeFile) {
             fileContents.current[activeFile] = update.state.doc.toString()
+            markDirty(activeFile)
           }
         }),
       ],
@@ -83,7 +91,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     if (!activeFile || !editorViewRef.current) return
     const content = editorViewRef.current.state.doc.toString()
     await window.electronAPI.writeFile(activeFile, content)
-  }, [activeFile])
+    markClean(activeFile)
+  }, [activeFile, markClean])
 
   useEffect(() => {
     if (pendingReplacement !== null && editorViewRef.current) {
@@ -154,7 +163,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
               gap: 6,
             }}
           >
-            <span>{file.split('/').pop()}</span>
+            <span>{dirtyFiles.has(file) ? '• ' : ''}{file.split('/').pop()}</span>
             <span
               onClick={(e) => { e.stopPropagation(); closeFile(file) }}
               style={{ color: '#666', fontSize: 14, lineHeight: 1 }}
