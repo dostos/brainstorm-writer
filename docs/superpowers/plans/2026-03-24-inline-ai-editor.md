@@ -47,11 +47,12 @@ pendingInlineDiff: {
   to: number
   original: string
   suggested: string
+  comments: string   // AI's explanation of why it made these changes
   provider: string
 } | null
 
 // New actions
-showInlineDiff: (diff: { file: string; from: number; to: number; original: string; suggested: string; provider: string }) => void
+showInlineDiff: (diff: { file: string; from: number; to: number; original: string; suggested: string; comments: string; provider: string }) => void
 acceptInlineDiff: () => void
 rejectInlineDiff: () => void
 ```
@@ -99,12 +100,13 @@ import { diffWords } from 'diff'
 interface InlineDiffProps {
   original: string
   suggested: string
+  comments: string    // AI's explanation of changes
   provider: string
   onAccept: () => void
   onReject: () => void
 }
 
-export function InlineDiff({ original, suggested, provider, onAccept, onReject }: InlineDiffProps) {
+export function InlineDiff({ original, suggested, comments, provider, onAccept, onReject }: InlineDiffProps) {
   const changes = diffWords(original, suggested)
 
   return (
@@ -112,61 +114,57 @@ export function InlineDiff({ original, suggested, provider, onAccept, onReject }
       background: '#1a2a1a',
       border: '1px solid #2a4a2a',
       borderRadius: 4,
-      padding: '8px 12px',
       margin: '4px 0',
       fontSize: 13,
       lineHeight: 1.6,
       fontFamily: 'inherit',
+      display: 'flex',
     }}>
-      {/* Provider label */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 6,
-        fontSize: 11,
-        color: '#888',
-      }}>
-        <span>Suggested by <strong style={{ color: '#6c9' }}>{provider}</strong></span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            onClick={onAccept}
-            style={{
+      {/* Left: Diff content */}
+      <div style={{ flex: 1, padding: '8px 12px', borderRight: comments ? '1px solid #2a4a2a' : 'none' }}>
+        {/* Header with buttons */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 6, fontSize: 11, color: '#888',
+        }}>
+          <span>Suggested by <strong style={{ color: '#6c9' }}>{provider}</strong></span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={onAccept} style={{
               background: '#4a4', color: '#fff', border: 'none',
               padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
-            }}
-          >
-            Accept (Tab)
-          </button>
-          <button
-            onClick={onReject}
-            style={{
+            }}>Accept (Tab)</button>
+            <button onClick={onReject} style={{
               background: '#444', color: '#ccc', border: 'none',
               padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
-            }}
-          >
-            Reject (Esc)
-          </button>
+            }}>Reject (Esc)</button>
+          </div>
+        </div>
+
+        {/* Diff */}
+        <div style={{ whiteSpace: 'pre-wrap' }}>
+          {changes.map((change, i) => (
+            <span key={i} style={{
+              background: change.added ? 'rgba(80,200,120,0.2)' : change.removed ? 'rgba(200,80,80,0.15)' : 'transparent',
+              textDecoration: change.removed ? 'line-through' : 'none',
+              color: change.added ? '#6c9' : change.removed ? '#c66' : '#ccc',
+            }}>{change.value}</span>
+          ))}
         </div>
       </div>
 
-      {/* Diff content */}
-      <div style={{ whiteSpace: 'pre-wrap' }}>
-        {changes.map((change, i) => (
-          <span
-            key={i}
-            style={{
-              background: change.added ? 'rgba(80,200,120,0.2)'
-                : change.removed ? 'rgba(200,80,80,0.15)'
-                : 'transparent',
-              textDecoration: change.removed ? 'line-through' : 'none',
-              color: change.added ? '#6c9' : change.removed ? '#c66' : '#ccc',
-            }}
-          >
-            {change.value}
-          </span>
-        ))}
-      </div>
+      {/* Right: AI comments — why it made these changes */}
+      {comments && (
+        <div style={{
+          width: 220, padding: '8px 10px', fontSize: 11, color: '#aaa',
+          lineHeight: 1.5, overflow: 'auto', background: '#1a1a2a',
+          borderRadius: '0 4px 4px 0',
+        }}>
+          <div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5 }}>
+            Comments
+          </div>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{comments}</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -210,6 +208,7 @@ export const showInlineDiffEffect = StateEffect.define<{
   to: number
   original: string
   suggested: string
+  comments: string
   provider: string
 }>()
 
@@ -221,6 +220,7 @@ class InlineDiffWidget extends WidgetType {
   constructor(
     private original: string,
     private suggested: string,
+    private comments: string,
     private provider: string,
     private onAccept: () => void,
     private onReject: () => void,
@@ -236,6 +236,7 @@ class InlineDiffWidget extends WidgetType {
       React.createElement(InlineDiff, {
         original: this.original,
         suggested: this.suggested,
+        comments: this.comments,
         provider: this.provider,
         onAccept: this.onAccept,
         onReject: this.onReject,
@@ -268,8 +269,8 @@ export function createInlineDiffField(
       // Check for show/clear effects
       for (const effect of tr.effects) {
         if (effect.is(showInlineDiffEffect)) {
-          const { from, to, original, suggested, provider } = effect.value
-          const widget = new InlineDiffWidget(original, suggested, provider, onAccept, onReject)
+          const { from, to, original, suggested, comments, provider } = effect.value
+          const widget = new InlineDiffWidget(original, suggested, comments, provider, onAccept, onReject)
           // Place the widget after the selection
           return Decoration.set([
             // Highlight the original text with a subtle background
@@ -655,6 +656,7 @@ In AiPanel.tsx, in the result action buttons section, add:
       to: sel.to,
       original: sel.text,
       suggested: stripCodeFences(text),
+      comments: parsed.comments || '',
       provider: result.provider,
     })
   }}
@@ -735,18 +737,19 @@ const handleInlineAiRequest = useCallback(async (prompt: string, selectedText: s
       unsubscribe()
       const parsed = parseAiResponse(result.text)
       const suggested = stripCodeFences(parsed.revised || result.text)
+      const comments = parsed.comments || ''
 
-      // Show inline diff
+      // Show inline diff with comments
       useEditorStore.getState().showInlineDiff({
         file, from: sel.from, to: sel.to,
-        original: selectedText, suggested, provider,
+        original: selectedText, suggested, comments, provider,
       })
 
       // Dispatch CodeMirror effect
       view.dispatch({
         effects: showInlineDiffEffect.of({
           from: sel.from, to: sel.to,
-          original: selectedText, suggested, provider,
+          original: selectedText, suggested, comments, provider,
         }),
       })
     }
