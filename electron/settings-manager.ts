@@ -8,6 +8,7 @@ export interface Settings {
   contextScope: 'selection' | 'section' | 'full'
   savedPrompts: string[]
   models: Record<string, string>
+  providerModes: Record<string, 'api' | 'cli'>  // per-provider: use API key or CLI tool
   timeout: number
 }
 
@@ -34,6 +35,11 @@ const DEFAULTS: Settings = {
     claude: 'claude-sonnet-4-20250514',
     openai: 'gpt-4o',
     gemini: 'gemini-2.0-flash',
+  },
+  providerModes: {
+    claude: 'cli',
+    openai: 'api',
+    gemini: 'cli',
   },
   timeout: 60000,
 }

@@ -11,7 +11,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
   const replaceSelection = useEditorStore((s) => s.replaceSelection)
   const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
-  const { systemPrompt, contextScope, models, contextTemplate } = useSettingsStore()
+  const { systemPrompt, contextScope, models, contextTemplate, providerModes } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
 
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
@@ -71,6 +71,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
         selectedText: selection.text,
         userPrompt,
         models,
+        providerModes,
       })
     } catch (err: any) {
       // If the IPC call itself fails, mark all providers as done with error

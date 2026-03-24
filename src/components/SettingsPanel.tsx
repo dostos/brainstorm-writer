@@ -51,37 +51,70 @@ export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
     <div style={{ padding: 16, overflow: 'auto', height: '100%' }}>
       <h3 style={{ color: '#ccc', marginBottom: 16 }}>Settings</h3>
 
-      {/* API Keys */}
+      {/* Providers — mode, model, API key per provider */}
       <div style={{ marginBottom: 20 }}>
-        <h4 style={{ color: '#6c9', fontSize: 13, marginBottom: 8 }}>API Keys</h4>
-        {PROVIDERS.map((p) => (
-          <div key={p.id} style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>{p.label} <span style={{ color: '#555' }}>({p.envVar})</span></label>
-            <input
-              type="password"
-              value={apiKeys[p.id] || ''}
-              onChange={(e) => saveApiKey(p.id, e.target.value)}
-              placeholder={`Enter ${p.label} API key or set ${p.envVar}`}
-              style={inputStyle}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Model Selection */}
-      <div style={{ marginBottom: 20 }}>
-        <h4 style={{ color: '#6c9', fontSize: 13, marginBottom: 8 }}>Models</h4>
-        {PROVIDERS.map((p) => (
-          <div key={p.id} style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>{p.label}</label>
-            <input
-              value={settings.models[p.id] || ''}
-              onChange={(e) => saveSettings({ models: { ...settings.models, [p.id]: e.target.value } })}
-              placeholder="Model ID"
-              style={inputStyle}
-            />
-          </div>
-        ))}
+        <h4 style={{ color: '#6c9', fontSize: 13, marginBottom: 8 }}>Providers</h4>
+        {PROVIDERS.map((p) => {
+          const mode = settings.providerModes?.[p.id] || 'api'
+          return (
+            <div key={p.id} style={{ background: '#252540', borderRadius: 6, padding: 10, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: '#ccc', fontSize: 12, fontWeight: 'bold' }}>{p.label}</span>
+                {/* Mode toggle */}
+                <div style={{ display: 'flex', gap: 2 }}>
+                  {(['api', 'cli'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => saveSettings({ providerModes: { ...settings.providerModes, [p.id]: m } })}
+                      style={{
+                        background: mode === m ? '#3a3a5e' : 'transparent',
+                        color: mode === m ? '#6c9' : '#666',
+                        border: '1px solid #444',
+                        padding: '1px 8px',
+                        borderRadius: 3,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Model */}
+              <div style={{ marginBottom: mode === 'api' ? 6 : 0 }}>
+                <label style={{ ...labelStyle, marginBottom: 2 }}>Model</label>
+                <input
+                  value={settings.models[p.id] || ''}
+                  onChange={(e) => saveSettings({ models: { ...settings.models, [p.id]: e.target.value } })}
+                  placeholder="Model ID"
+                  style={{ ...inputStyle, fontSize: 11 }}
+                />
+              </div>
+              {/* API Key — only show in API mode */}
+              {mode === 'api' && (
+                <div>
+                  <label style={{ ...labelStyle, marginBottom: 2 }}>
+                    API Key <span style={{ color: '#555' }}>({p.envVar})</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKeys[p.id] || ''}
+                    onChange={(e) => saveApiKey(p.id, e.target.value)}
+                    placeholder={`Enter key or set ${p.envVar}`}
+                    style={{ ...inputStyle, fontSize: 11 }}
+                  />
+                </div>
+              )}
+              {mode === 'cli' && (
+                <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
+                  Uses <code style={{ color: '#6c9' }}>{p.id === 'openai' ? 'N/A' : p.id}</code> CLI tool
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* System Prompt */}
