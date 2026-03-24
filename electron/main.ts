@@ -46,8 +46,9 @@ function createWindow() {
   mainWindow.on('resize', saveBounds)
   mainWindow.on('move', saveBounds)
 
-  // v1.0 #2: Confirm close so users don't lose unsaved work
+  // v1.0 #2: Confirm close so users don't lose unsaved work (skip in test mode)
   mainWindow.on('close', (e) => {
+    if (process.env.NODE_ENV === 'test') return // Skip dialog in E2E tests
     const choice = dialog.showMessageBoxSync(mainWindow!, {
       type: 'question',
       buttons: ['Close', 'Cancel'],
