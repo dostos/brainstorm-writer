@@ -19,6 +19,7 @@ async function renderPage(
 ) {
   const page = await doc.getPage(pageNum)
   const viewport = page.getViewport({ scale })
+  const dpr = window.devicePixelRatio || 1
 
   // Clear previous content
   container.innerHTML = ''
@@ -26,14 +27,17 @@ async function renderPage(
   container.style.height = `${viewport.height}px`
   container.style.position = 'relative'
 
-  // Canvas layer
+  // Canvas layer — render at devicePixelRatio for sharp text
   const canvas = document.createElement('canvas')
-  canvas.width = viewport.width
-  canvas.height = viewport.height
+  canvas.width = viewport.width * dpr
+  canvas.height = viewport.height * dpr
+  canvas.style.width = `${viewport.width}px`
+  canvas.style.height = `${viewport.height}px`
   canvas.style.display = 'block'
   container.appendChild(canvas)
 
   const ctx = canvas.getContext('2d')!
+  ctx.scale(dpr, dpr)
   await page.render({ canvasContext: ctx, viewport }).promise
 
   // Text layer for selection — uses pdfjs official .textLayer CSS class
@@ -210,6 +214,48 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     document.addEventListener('mouseup', handler)
     return () => document.removeEventListener('mouseup', handler)
   }, [setSelection])
+
+  // Middle-click panning (drag to scroll)
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    let isPanning = false
+    let startX = 0
+    let startY = 0
+    let scrollLeft = 0
+    let scrollTop = 0
+
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 1) return // middle click only
+      e.preventDefault()
+      isPanning = true
+      startX = e.clientX
+      startY = e.clientY
+      scrollLeft = container.scrollLeft
+      scrollTop = container.scrollTop
+      container.style.cursor = 'grabbing'
+    }
+    const onMove = (e: MouseEvent) => {
+      if (!isPanning) return
+      container.scrollLeft = scrollLeft - (e.clientX - startX)
+      container.scrollTop = scrollTop - (e.clientY - startY)
+    }
+    const onUp = () => {
+      isPanning = false
+      container.style.cursor = ''
+    }
+
+    container.addEventListener('mousedown', onDown)
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    // Prevent default middle-click auto-scroll
+    container.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault() })
+    return () => {
+      container.removeEventListener('mousedown', onDown)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
 
   // Watch for PDF changes
   useEffect(() => {
