@@ -176,8 +176,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const wordWrapRef = useRef(wordWrap)
   wordWrapRef.current = wordWrap
 
-  // Build extensions array
-  const buildExtensions = useCallback(() => [
+  // Build extensions — uses refs to avoid stale closures, no reactive deps
+  const buildExtensions = () => [
     basicSetup,
     oneDark,
     latexMode,
@@ -190,20 +190,20 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         const sel = update.state.selection.main
         if (sel.from !== sel.to) {
           const text = update.state.doc.sliceString(sel.from, sel.to)
-          setSelection({ text, from: sel.from, to: sel.to })
+          useEditorStore.getState().setSelection({ text, from: sel.from, to: sel.to })
         } else {
-          setSelection(null)
+          useEditorStore.getState().setSelection(null)
         }
       }
       if (update.docChanged && activeFileRef.current) {
         fileContents.current[activeFileRef.current] = update.state.doc.toString()
-        markDirty(activeFileRef.current)
+        useEditorStore.getState().markDirty(activeFileRef.current)
       }
     }),
-  ], [setSelection, markDirty])
+  ]
 
-  // Create/recreate EditorView — takes file path explicitly to avoid stale closures
-  const mountEditor = useCallback((file: string, content: string) => {
+  // Mount editor for a specific file — no reactive deps to avoid spurious re-mounts
+  const mountEditorRef = useRef((file: string, content: string) => {
     if (!containerRef.current) return
 
     // Save current state before destroying
@@ -217,40 +217,31 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       editorViewRef.current = null
     }
 
-    // Check if we have a saved state for this file (preserves undo history)
     const savedState = editorStatesRef.current.get(file)
-
     const state = savedState ?? EditorState.create({
       doc: content,
       extensions: buildExtensions(),
     })
 
-    const view = new EditorView({
-      state,
-      parent: containerRef.current,
-    })
+    const view = new EditorView({ state, parent: containerRef.current })
     editorViewRef.current = view
 
-    // Restore scroll
     const savedScroll = scrollPositionsRef.current.get(file) ?? 0
-    requestAnimationFrame(() => {
-      view.scrollDOM.scrollTop = savedScroll
-    })
-  }, [buildExtensions])
+    requestAnimationFrame(() => { view.scrollDOM.scrollTop = savedScroll })
+  })
 
   // Track previous activeFile
   const previousActiveFileRef = useRef<string | null>(null)
 
-  // Handle tab switch and first open
+  // Handle tab switch and first open — ONLY depends on activeFile
   useEffect(() => {
     if (!activeFile) return
 
-    const previousFile = previousActiveFileRef.current
     previousActiveFileRef.current = activeFile
 
     // If we have cached content or saved state, mount immediately
     if (editorStatesRef.current.has(activeFile) || fileContents.current[activeFile]) {
-      mountEditor(activeFile, fileContents.current[activeFile] || '')
+      mountEditorRef.current(activeFile, fileContents.current[activeFile] || '')
       return
     }
 
@@ -259,10 +250,10 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       const content = await window.electronAPI.readFile(activeFile)
       if (useEditorStore.getState().activeFile !== activeFile) return
       fileContents.current[activeFile] = content
-      mountEditor(activeFile, content)
+      mountEditorRef.current(activeFile, content)
     }
     load()
-  }, [activeFile, mountEditor])
+  }, [activeFile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hot-swap lineWrapping via Compartment when wordWrap changes
   useEffect(() => {
