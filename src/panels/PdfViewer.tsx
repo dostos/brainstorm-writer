@@ -186,7 +186,10 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     if (searchResult) {
       openFile(searchResult.file)
       setActiveFile(searchResult.file)
-      // TODO: jump to searchResult.line in editor
+      // Jump to the matching line after a small delay (let editor load the file)
+      setTimeout(() => {
+        useEditorStore.getState().jumpToLine(searchResult.line)
+      }, 300)
     }
   }, [effectiveScale, openFile, setActiveFile, projectPath])
 

@@ -97,6 +97,23 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     }
   }, [pendingReplacement, clearReplacement])
 
+  // Jump to line from PDF double-click
+  const pendingJumpLine = useEditorStore((s) => s.pendingJumpLine)
+  const clearJump = useEditorStore((s) => s.clearJump)
+  useEffect(() => {
+    if (pendingJumpLine !== null && editorViewRef.current) {
+      const view = editorViewRef.current
+      const line = Math.min(pendingJumpLine, view.state.doc.lines)
+      const lineInfo = view.state.doc.line(line)
+      view.dispatch({
+        selection: { anchor: lineInfo.from },
+        scrollIntoView: true,
+      })
+      view.focus()
+      clearJump()
+    }
+  }, [pendingJumpLine, clearJump])
+
   // Ctrl+S / Cmd+S to save
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

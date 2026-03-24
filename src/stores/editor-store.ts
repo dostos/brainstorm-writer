@@ -11,12 +11,15 @@ interface EditorState {
   openFiles: string[]
   selection: Selection | null
   pendingReplacement: string | null
+  pendingJumpLine: number | null
   setActiveFile: (file: string) => void
   setSelection: (selection: Selection | null) => void
   openFile: (file: string) => void
   closeFile: (file: string) => void
   replaceSelection: (text: string) => void
   clearReplacement: () => void
+  jumpToLine: (line: number) => void
+  clearJump: () => void
 }
 
 export const useEditorStore = create<EditorState>()((set) => ({
@@ -24,6 +27,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
   openFiles: [],
   selection: null,
   pendingReplacement: null,
+  pendingJumpLine: null,
   setActiveFile: (file) => set({ activeFile: file }),
   setSelection: (selection) => set({ selection }),
   openFile: (file) =>
@@ -38,4 +42,6 @@ export const useEditorStore = create<EditorState>()((set) => ({
     })),
   replaceSelection: (text) => set({ pendingReplacement: text }),
   clearReplacement: () => set({ pendingReplacement: null }),
+  jumpToLine: (line) => set({ pendingJumpLine: line }),
+  clearJump: () => set({ pendingJumpLine: null }),
 }))
