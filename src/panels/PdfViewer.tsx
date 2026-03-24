@@ -126,15 +126,18 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => observer.disconnect()
   }, [pdfDoc, computeFitScale, manualScale])
 
-  // Try to parse SyncTeX; if not found, auto-build to generate it
+  // Try to parse SyncTeX; if not found, auto-build ONCE to generate it
+  const hasTriedAutoBuild = useRef(false)
   const tryParseSynctex = useCallback(async (pdfPath: string) => {
     const synctexPath = pdfPath.replace(/\.pdf$/, '.synctex.gz')
     try {
       await window.electronAPI.parseSynctex(synctexPath)
+      console.log('[PdfViewer] SyncTeX parsed successfully')
     } catch {
-      // SyncTeX file not found — trigger a build to generate it
-      if (projectPath) {
-        console.log('[PdfViewer] No SyncTeX found, auto-building to generate...')
+      // SyncTeX not found — auto-build once to generate it
+      if (projectPath && !hasTriedAutoBuild.current) {
+        hasTriedAutoBuild.current = true
+        console.log('[PdfViewer] No SyncTeX found, auto-building once...')
         try {
           await window.electronAPI.buildLatex(projectPath)
           // After build, try parsing again
@@ -160,9 +163,10 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
           prev?.destroy()
           return doc
         })
+        const isFirstLoad = !pdfDoc
         setTotalPages(doc.numPages)
-        setCurrentPage(1)
-        setManualScale(null)
+        if (isFirstLoad) setCurrentPage(1)
+        if (isFirstLoad) setManualScale(null)
         renderedPagesRef.current.clear()
         pageDimensionsRef.current.clear()
         tryParseSynctex(result.path)
