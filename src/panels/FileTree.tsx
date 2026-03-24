@@ -1,107 +1,124 @@
 import React, { useCallback, useState } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
-import { Tree, NodeRendererProps } from 'react-arborist'
 import { useProjectStore } from '../stores/project-store'
 import { useEditorStore } from '../stores/editor-store'
-// Type declarations for window.electronAPI are in src/types/electron.d.ts
 
-interface TreeNode {
-  id: string
+interface FileNode {
   name: string
   path: string
   isDirectory: boolean
-  children?: TreeNode[]
+  children?: FileNode[]
 }
 
 interface ContextMenu {
   x: number
   y: number
-  node: TreeNode
+  node: FileNode
 }
 
-function toTreeData(nodes: any[]): TreeNode[] {
-  return nodes.map((n) => ({
-    id: n.path,
-    name: n.name,
-    path: n.path,
-    isDirectory: n.isDirectory,
-    children: n.children ? toTreeData(n.children) : undefined,
-  }))
-}
-
-function Node({ node, style, onContextMenu, onFileClick }: NodeRendererProps<TreeNode> & {
-  onContextMenu?: (e: React.MouseEvent, data: TreeNode) => void
-  onFileClick?: (path: string) => void
+// Simple recursive tree item component — no external library
+function TreeItem({
+  node,
+  depth,
+  openDirs,
+  toggleDir,
+  onFileClick,
+  activeFile,
+  onContextMenu,
+}: {
+  node: FileNode
+  depth: number
+  openDirs: Set<string>
+  toggleDir: (path: string) => void
+  onFileClick: (path: string) => void
+  activeFile: string | null
+  onContextMenu: (e: React.MouseEvent, node: FileNode) => void
 }) {
-  const icon = node.data.isDirectory ? (node.isOpen ? '📂' : '📁') : '📄'
-  const depth = node.level
+  const isOpen = openDirs.has(node.path)
+  const isActive = node.path === activeFile
+
   return (
-    <div
-      style={{
-        ...style,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        paddingLeft: depth * 16 + 8,
-        paddingRight: 4,
-        paddingTop: 2,
-        paddingBottom: 2,
-        cursor: 'pointer',
-        fontSize: 13,
-        color: node.isSelected ? '#6c9' : '#ccc',
-        background: node.isSelected ? 'rgba(102,204,153,0.1)' : 'transparent',
-      }}
-      onClick={(e) => {
-        e.stopPropagation()
-        if (node.isInternal) {
-          node.toggle()
-        } else {
-          onFileClick?.(node.data.path)
-        }
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation()
-        // Same action as single click — prevent react-arborist from handling differently
-        if (!node.isInternal) {
-          onFileClick?.(node.data.path)
-        }
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        onContextMenu?.(e, node.data)
-      }}
-    >
-      <span style={{ flexShrink: 0 }}>{icon}</span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.data.name}</span>
-    </div>
+    <>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          paddingLeft: depth * 16 + 8,
+          paddingRight: 4,
+          paddingTop: 3,
+          paddingBottom: 3,
+          cursor: 'pointer',
+          fontSize: 13,
+          color: isActive ? '#6c9' : '#ccc',
+          background: isActive ? 'rgba(102,204,153,0.1)' : 'transparent',
+          userSelect: 'none',
+        }}
+        onClick={() => {
+          if (node.isDirectory) {
+            toggleDir(node.path)
+          } else {
+            onFileClick(node.path)
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onContextMenu(e, node)
+        }}
+      >
+        <span style={{ flexShrink: 0, fontSize: 12 }}>
+          {node.isDirectory ? (isOpen ? '📂' : '📁') : '📄'}
+        </span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {node.name}
+        </span>
+      </div>
+      {node.isDirectory && isOpen && node.children?.map((child) => (
+        <TreeItem
+          key={child.path}
+          node={child}
+          depth={depth + 1}
+          openDirs={openDirs}
+          toggleDir={toggleDir}
+          onFileClick={onFileClick}
+          activeFile={activeFile}
+          onContextMenu={onContextMenu}
+        />
+      ))}
+    </>
   )
 }
 
 export const FileTree: React.FC<IDockviewPanelProps> = () => {
   const { projectPath, fileTree, setProject } = useProjectStore()
-  const { openFile } = useEditorStore()
+  const { openFile, activeFile } = useEditorStore()
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
+  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set())
+
+  const toggleDir = useCallback((path: string) => {
+    setOpenDirs((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
 
   const handleOpenProject = useCallback(async () => {
     const result = await window.electronAPI.openProject()
     if (result) {
       setProject(result.projectPath, result.tree)
+      setOpenDirs(new Set())
       await window.electronAPI.watchProject(result.projectPath)
     }
   }, [setProject])
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNode) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: FileNode) => {
     setContextMenu({ x: e.clientX, y: e.clientY, node })
   }, [])
-
-  const refreshTree = useCallback(async () => {
-    if (!projectPath) return
-    const tree = await window.electronAPI.scanProject()
-    setProject(projectPath, tree)
-  }, [projectPath, setProject])
 
   const handleNewFile = useCallback(async () => {
     if (!contextMenu) return
@@ -149,13 +166,6 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
     }
   }, [contextMenu, closeContextMenu, projectPath, setProject])
 
-  const treeData = toTreeData(fileTree)
-
-  // NodeRenderer wrapper to inject handlers
-  const NodeWithMenu = useCallback((props: NodeRendererProps<TreeNode>) => (
-    <Node {...props} onContextMenu={handleContextMenu} onFileClick={openFile} />
-  ), [handleContextMenu, openFile])
-
   return (
     <div
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
@@ -183,29 +193,19 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
           {projectPath.split('/').pop()}
         </div>
       )}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {treeData.length > 0 && (
-          <Tree
-            data={treeData}
-            openByDefault={false}
-            width="100%"
-            indent={16}
-            rowHeight={24}
-            disableMultiSelection
-            disableEdit
-            onActivate={(node) => {
-              // Double-click / Enter — same as single click: open the file
-              if (node && !node.data.isDirectory) {
-                openFile(node.data.path)
-              }
-            }}
-            onSelect={() => {
-              // Handled via Node onClick
-            }}
-          >
-            {NodeWithMenu}
-          </Tree>
-        )}
+      <div style={{ flex: 1, overflow: 'auto', paddingTop: 4 }}>
+        {fileTree.map((node) => (
+          <TreeItem
+            key={node.path}
+            node={node}
+            depth={0}
+            openDirs={openDirs}
+            toggleDir={toggleDir}
+            onFileClick={openFile}
+            activeFile={activeFile}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
       </div>
 
       {/* Context menu */}
