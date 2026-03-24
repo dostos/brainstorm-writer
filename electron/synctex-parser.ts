@@ -58,17 +58,37 @@ export class SynctexParser {
       if (line.startsWith('{')) {
         currentPage = parseInt(line.substring(1), 10)
       }
-      if (line.startsWith('h') || line.startsWith('x')) {
-        const match = line.match(/^[hx](\d+),(\d+),(-?\d+):(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+)/)
+      if (line.startsWith('h') || line.startsWith('x') || line.startsWith('v') || line.startsWith('g')) {
+        // SyncTeX format: h<fileId>,<line>:<x>,<y>:<w>,<h>,<d>
+        // or older: h<fileId>,<line>,<col>:<x>,<y>,<w>,<h>,<d>
+        // Coordinates are in sp (scaled points): 1pt = 65536sp
+        const SP_TO_PT = 65536
+
+        // Try format: h<fileId>,<line>:<x>,<y>:<w>,<h>,<d>
+        let match = line.match(/^[hxvg](\d+),(\d+):(-?\d+),(-?\d+):(-?\d+),(-?\d+),(-?\d+)/)
         if (match) {
           const fileId = parseInt(match[1], 10)
           const lineNum = parseInt(match[2], 10)
-          const x = parseInt(match[4], 10)
-          const y = parseInt(match[5], 10)
-          const width = parseInt(match[6], 10)
-          const height = parseInt(match[7], 10)
+          const x = parseInt(match[3], 10) / SP_TO_PT
+          const y = parseInt(match[4], 10) / SP_TO_PT
+          const width = parseInt(match[5], 10) / SP_TO_PT
+          const height = parseInt(match[6], 10) / SP_TO_PT
           if (fileMap[fileId] && lineNum > 0) {
             entries.push({ page: currentPage, x, y, width, height, file: fileMap[fileId], line: lineNum })
+          }
+        } else {
+          // Try older format: h<fileId>,<line>,<col>:<x>,<y>,<w>,<h>,<d>
+          match = line.match(/^[hxvg](\d+),(\d+),(-?\d+):(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+)/)
+          if (match) {
+            const fileId = parseInt(match[1], 10)
+            const lineNum = parseInt(match[2], 10)
+            const x = parseInt(match[4], 10) / SP_TO_PT
+            const y = parseInt(match[5], 10) / SP_TO_PT
+            const width = parseInt(match[6], 10) / SP_TO_PT
+            const height = parseInt(match[7], 10) / SP_TO_PT
+            if (fileMap[fileId] && lineNum > 0) {
+              entries.push({ page: currentPage, x, y, width, height, file: fileMap[fileId], line: lineNum })
+            }
           }
         }
       }

@@ -369,13 +369,15 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
     if (e.detail < 2) return
 
-    // SyncTeX inverse search only — no text search fallback (avoids backup file confusion)
+    // SyncTeX inverse search
     const container = e.currentTarget
     const rect = container.getBoundingClientRect()
     const x = (e.clientX - rect.left) / effectiveScale
     const y = (e.clientY - rect.top) / effectiveScale
 
+    console.log('[PdfViewer] double-click inverse search:', { pageNum, x: Math.round(x), y: Math.round(y), scale: effectiveScale })
     const synctexResult = await window.electronAPI.synctexInverse(pageNum, x, y)
+    console.log('[PdfViewer] synctexInverse result:', synctexResult)
     if (synctexResult) {
       openFile(synctexResult.file)
       setActiveFile(synctexResult.file)
