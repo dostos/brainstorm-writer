@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useSettingsStore } from '../stores/settings-store'
+import { useAiStore } from '../stores/ai-store'
 
 interface Props {
   onSubmit: (prompt: string) => void
@@ -10,6 +11,14 @@ export const PromptInput: React.FC<Props> = ({ onSubmit, disabled }) => {
   const [prompt, setPrompt] = useState('')
   const { savedPrompts, contextScope } = useSettingsStore()
   const setSettings = useSettingsStore((s) => s.setSettings)
+  const { pendingPrompt, setPendingPrompt } = useAiStore()
+
+  useEffect(() => {
+    if (pendingPrompt !== null) {
+      setPrompt(pendingPrompt)
+      setPendingPrompt(null)
+    }
+  }, [pendingPrompt, setPendingPrompt])
 
   const handleSubmit = () => {
     if (prompt.trim()) {

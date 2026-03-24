@@ -17,6 +17,7 @@ interface AiState {
   isLoading: boolean
   selectedProviders: string[]
   conversationHistory: ConversationMessage[]
+  pendingPrompt: string | null
   startRequest: (providers: string[]) => void
   appendChunk: (provider: string, chunk: string) => void
   finishProvider: (provider: string, error?: string) => void
@@ -24,6 +25,7 @@ interface AiState {
   setSelectedProviders: (providers: string[]) => void
   addToHistory: (role: 'user' | 'assistant', content: string) => void
   clearHistory: () => void
+  setPendingPrompt: (prompt: string | null) => void
 }
 
 export const useAiStore = create<AiState>()((set) => ({
@@ -31,6 +33,7 @@ export const useAiStore = create<AiState>()((set) => ({
   isLoading: false,
   selectedProviders: ['claude', 'openai', 'gemini'],
   conversationHistory: [],
+  pendingPrompt: null,
   startRequest: (providers) =>
     set({
       isLoading: true,
@@ -59,4 +62,5 @@ export const useAiStore = create<AiState>()((set) => ({
       conversationHistory: [...state.conversationHistory, { role, content }],
     })),
   clearHistory: () => set({ conversationHistory: [] }),
+  setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
 }))
