@@ -14,6 +14,14 @@ import { DiffView } from '../components/DiffView'
 //   (bullet points)
 //   === SUGGESTIONS ===
 //   (bullet points)
+// Strip markdown code fences (```latex ... ``` or ``` ... ```) from AI output
+function stripCodeFences(text: string): string {
+  return text
+    .replace(/^```[\w]*\n?/gm, '')
+    .replace(/\n?```$/gm, '')
+    .trim()
+}
+
 export function parseAiResponse(text: string): {
   revised: string
   comments: string
@@ -22,12 +30,12 @@ export function parseAiResponse(text: string): {
 } {
   const revisedMatch = text.match(/===\s*REVISED\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*SUGGESTIONS\s*===|$)/)
   if (!revisedMatch) {
-    return { revised: '', comments: '', suggestions: '', raw: text }
+    return { revised: '', comments: '', suggestions: '', raw: stripCodeFences(text) }
   }
   const commentsMatch = text.match(/===\s*COMMENTS\s*===\s*([\s\S]*?)(?===\s*SUGGESTIONS\s*===|===\s*REVISED\s*===|$)/)
   const suggestionsMatch = text.match(/===\s*SUGGESTIONS\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*REVISED\s*===|$)/)
   return {
-    revised: revisedMatch[1].trim(),
+    revised: stripCodeFences(revisedMatch[1].trim()),
     comments: commentsMatch ? commentsMatch[1].trim() : '',
     suggestions: suggestionsMatch ? suggestionsMatch[1].trim() : '',
     raw: text,
