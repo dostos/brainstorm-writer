@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useEffect, useRef, useCallback, useState } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
@@ -22,12 +22,13 @@ const latexMode = StreamLanguage.define({
 export const Editor: React.FC<IDockviewPanelProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
+  const [wordWrap, setWordWrap] = useState(true)
   const { activeFile, openFiles, setSelection, setActiveFile, closeFile } = useEditorStore()
   const pendingReplacement = useEditorStore((s) => s.pendingReplacement)
   const clearReplacement = useEditorStore((s) => s.clearReplacement)
   const fileContents = useRef<Record<string, string>>({})
 
-  // Load file content when active file changes
+  // Load file content when active file or wordWrap changes
   useEffect(() => {
     if (!activeFile) return
     if (fileContents.current[activeFile]) {
@@ -38,7 +39,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       fileContents.current[activeFile] = content
       updateEditorContent(content)
     })
-  }, [activeFile])
+  }, [activeFile, wordWrap])
 
   const updateEditorContent = useCallback((content: string) => {
     if (!containerRef.current) return
@@ -53,6 +54,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         basicSetup,
         oneDark,
         latexMode,
+        ...(wordWrap ? [EditorView.lineWrapping] : []),
         EditorView.updateListener.of((update) => {
           if (update.selectionSet) {
             const sel = update.state.selection.main
@@ -75,7 +77,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       state,
       parent: containerRef.current,
     })
-  }, [activeFile, setSelection])
+  }, [activeFile, setSelection, wordWrap])
 
   const handleSave = useCallback(async () => {
     if (!activeFile || !editorViewRef.current) return
@@ -118,7 +120,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #333', background: '#16162a' }}>
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #333', background: '#16162a' }}>
         {openFiles.map((file) => (
           <div
             key={file}
@@ -144,6 +146,23 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
             </span>
           </div>
         ))}
+        <div style={{ marginLeft: 'auto', paddingRight: 8 }}>
+          <button
+            onClick={() => setWordWrap(!wordWrap)}
+            title={wordWrap ? 'Word wrap: ON' : 'Word wrap: OFF'}
+            style={{
+              background: wordWrap ? '#3a3a5e' : 'transparent',
+              color: wordWrap ? '#6c9' : '#666',
+              border: '1px solid #444',
+              padding: '1px 6px',
+              borderRadius: 3,
+              fontSize: 10,
+              cursor: 'pointer',
+            }}
+          >
+            Wrap
+          </button>
+        </div>
       </div>
       {/* Editor container */}
       <div ref={containerRef} style={{ flex: 1, overflow: 'auto' }} />
