@@ -44,9 +44,9 @@ const DEFAULTS: Settings = {
     gemini: 'gemini-2.0-flash',
   },
   providerModes: {
-    claude: 'cli',
+    claude: 'api',
     openai: 'api',
-    gemini: 'cli',
+    gemini: 'api',
   },
   timeout: 60000,
 }

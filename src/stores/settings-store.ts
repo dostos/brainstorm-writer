@@ -18,7 +18,7 @@ export const useSettingsStore = create<SettingsState>()((set) => ({
   contextScope: 'section',
   savedPrompts: [],
   models: { claude: 'claude-sonnet-4-20250514', openai: 'gpt-4o', gemini: 'gemini-2.0-flash' },
-  providerModes: { claude: 'cli', openai: 'api', gemini: 'cli' },
+  providerModes: { claude: 'api', openai: 'api', gemini: 'api' },
   timeout: 60000,
   setSettings: (settings) => set(settings),
   loadFromMain: async () => {
