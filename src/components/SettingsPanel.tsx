@@ -134,7 +134,7 @@ export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
               {mode === 'cli' && (
                 <div style={{ fontSize: 10, marginTop: 4, color: '#888' }}>
                   {p.id === 'openai'
-                    ? <>Uses <code style={{ color: '#6c9' }}>OPENAI_API_KEY</code> env var</>
+                    ? <>Uses <code style={{ color: '#6c9' }}>codex</code> CLI tool</>
                     : <>Uses <code style={{ color: '#6c9' }}>{p.id}</code> CLI tool</>
                   }
                 </div>

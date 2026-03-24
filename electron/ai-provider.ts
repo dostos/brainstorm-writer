@@ -34,6 +34,7 @@ function whichCmd(cmd: string): string | null {
 // Map provider ID → CLI command name
 const CLI_MAP: Record<string, string> = {
   claude: 'claude',
+  openai: 'codex',
   gemini: 'gemini',
 }
 
@@ -108,20 +109,6 @@ export class AiProviderManager {
         return this.streamViaCli(providerId, CLI_MAP[providerId], messages, window, controller, request)
       }
 
-      // OpenAI CLI mode: no standalone CLI tool; use OPENAI_API_KEY env var automatically
-      if (mode === 'cli' && providerId === 'openai') {
-        const envKey = process.env.OPENAI_API_KEY
-        if (!envKey) {
-          window.webContents.send('ai:stream', {
-            provider: providerId,
-            type: 'error',
-            error: 'CLI mode for OpenAI requires OPENAI_API_KEY environment variable to be set.',
-          })
-          return Promise.resolve()
-        }
-        return this.streamOpenAI(providerId, messages, model, envKey, window, controller, request)
-      }
-
       if (providerId === 'claude') {
         return this.streamClaude(providerId, messages, model, keys['claude'], window, controller, request)
       } else if (providerId === 'openai') {
@@ -177,10 +164,11 @@ export class AiProviderManager {
 
       let args: string[]
       if (cliName === 'claude') {
-        // Use stdin via pipe: echo prompt | claude -p - --output-format text
         args = ['-p', '-', '--output-format', 'text']
+      } else if (cliName === 'codex') {
+        // OpenAI's Codex CLI: codex exec "prompt" (reads from stdin with -)
+        args = ['exec', '-']
       } else if (cliName === 'gemini') {
-        // gemini reads from stdin when no -p arg, but let's use -p with stdin
         args = ['-p', '-']
       } else {
         window.webContents.send('ai:stream', {
