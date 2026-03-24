@@ -29,7 +29,10 @@ function toTreeData(nodes: any[]): TreeNode[] {
   }))
 }
 
-function Node({ node, style, onContextMenu }: NodeRendererProps<TreeNode> & { onContextMenu?: (e: React.MouseEvent, data: TreeNode) => void }) {
+function Node({ node, style, onContextMenu, onFileClick }: NodeRendererProps<TreeNode> & {
+  onContextMenu?: (e: React.MouseEvent, data: TreeNode) => void
+  onFileClick?: (path: string) => void
+}) {
   const icon = node.data.isDirectory ? (node.isOpen ? '📂' : '📁') : '📄'
   const depth = node.level
   return (
@@ -48,7 +51,14 @@ function Node({ node, style, onContextMenu }: NodeRendererProps<TreeNode> & { on
         color: node.isSelected ? '#6c9' : '#ccc',
         background: node.isSelected ? 'rgba(102,204,153,0.1)' : 'transparent',
       }}
-      onClick={() => node.isInternal ? node.toggle() : node.select()}
+      onClick={() => {
+        if (node.isInternal) {
+          node.toggle()
+        } else {
+          // Directly open file by full path — avoid react-arborist selection indirection
+          onFileClick?.(node.data.path)
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -134,10 +144,10 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
 
   const treeData = toTreeData(fileTree)
 
-  // NodeRenderer wrapper to inject context menu handler
+  // NodeRenderer wrapper to inject handlers
   const NodeWithMenu = useCallback((props: NodeRendererProps<TreeNode>) => (
-    <Node {...props} onContextMenu={handleContextMenu} />
-  ), [handleContextMenu])
+    <Node {...props} onContextMenu={handleContextMenu} onFileClick={openFile} />
+  ), [handleContextMenu, openFile])
 
   return (
     <div
@@ -174,11 +184,8 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
             width="100%"
             indent={16}
             rowHeight={24}
-            onSelect={(nodes) => {
-              const node = nodes[0]
-              if (node && !node.data.isDirectory) {
-                openFile(node.data.path)
-              }
+            onSelect={() => {
+              // File opening is handled directly in Node onClick via onFileClick
             }}
           >
             {NodeWithMenu}
