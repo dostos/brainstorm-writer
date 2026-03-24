@@ -176,119 +176,96 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const wordWrapRef = useRef(wordWrap)
   wordWrapRef.current = wordWrap
 
-  // Create the single EditorView on mount
-  useEffect(() => {
+  // Build extensions array
+  const buildExtensions = useCallback(() => [
+    basicSetup,
+    oneDark,
+    latexMode,
+    search(),
+    keymap.of(searchKeymap),
+    wrapCompartmentRef.current.of(wordWrapRef.current ? EditorView.lineWrapping : []),
+    autocompletion({ override: [latexCompletions] }),
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet) {
+        const sel = update.state.selection.main
+        if (sel.from !== sel.to) {
+          const text = update.state.doc.sliceString(sel.from, sel.to)
+          setSelection({ text, from: sel.from, to: sel.to })
+        } else {
+          setSelection(null)
+        }
+      }
+      if (update.docChanged && activeFileRef.current) {
+        fileContents.current[activeFileRef.current] = update.state.doc.toString()
+        markDirty(activeFileRef.current)
+      }
+    }),
+  ], [setSelection, markDirty])
+
+  // Create/recreate EditorView with given content — destroy+recreate approach
+  // but save/restore EditorState per file for undo history preservation
+  const mountEditor = useCallback((content: string) => {
     if (!containerRef.current) return
 
+    // Save current state before destroying
+    if (editorViewRef.current) {
+      const prevFile = previousActiveFileRef.current
+      if (prevFile) {
+        editorStatesRef.current.set(prevFile, editorViewRef.current.state)
+        scrollPositionsRef.current.set(prevFile, editorViewRef.current.scrollDOM.scrollTop)
+      }
+      editorViewRef.current.destroy()
+      editorViewRef.current = null
+    }
+
+    // Check if we have a saved state for this file (preserves undo history)
+    const savedState = activeFile ? editorStatesRef.current.get(activeFile) : null
+
+    const state = savedState ?? EditorState.create({
+      doc: content,
+      extensions: buildExtensions(),
+    })
+
     const view = new EditorView({
-      state: EditorState.create({ doc: '' }),
+      state,
       parent: containerRef.current,
     })
     editorViewRef.current = view
 
-    return () => {
-      view.destroy()
-      editorViewRef.current = null
+    // Restore scroll
+    if (activeFile) {
+      const savedScroll = scrollPositionsRef.current.get(activeFile) ?? 0
+      requestAnimationFrame(() => {
+        view.scrollDOM.scrollTop = savedScroll
+      })
     }
-  }, [])
+  }, [activeFile, buildExtensions])
 
-  // Build an EditorState for a given content string (for first open of a file)
-  const buildState = useCallback((content: string): EditorState => {
-    return EditorState.create({
-      doc: content,
-      extensions: [
-        basicSetup,
-        oneDark,
-        latexMode,
-        search(),
-        keymap.of(searchKeymap),
-        wrapCompartmentRef.current.of(wordWrapRef.current ? EditorView.lineWrapping : []),
-        autocompletion({ override: [latexCompletions] }),
-        EditorView.updateListener.of((update) => {
-          if (update.selectionSet) {
-            const sel = update.state.selection.main
-            if (sel.from !== sel.to) {
-              const text = update.state.doc.sliceString(sel.from, sel.to)
-              setSelection({ text, from: sel.from, to: sel.to })
-            } else {
-              setSelection(null)
-            }
-          }
-          // Track content changes and mark file dirty
-          if (update.docChanged && activeFileRef.current) {
-            fileContents.current[activeFileRef.current] = update.state.doc.toString()
-            markDirty(activeFileRef.current)
-          }
-        }),
-      ],
-    })
-  }, [setSelection, markDirty])
-
-  // Switch the view to the given file's state, saving/restoring scroll
-  const switchToFile = useCallback((
-    file: string,
-    previousFile: string | null,
-    newState: EditorState
-  ) => {
-    const view = editorViewRef.current
-    if (!view) return
-
-    // Save scroll position of previous file
-    if (previousFile) {
-      scrollPositionsRef.current.set(previousFile, view.scrollDOM.scrollTop)
-    }
-
-    view.setState(newState)
-
-    // Force CodeMirror to measure and update after state swap
-    requestAnimationFrame(() => {
-      view.requestMeasure()
-      // Restore scroll position for the target file
-      const savedScroll = scrollPositionsRef.current.get(file) ?? 0
-      view.scrollDOM.scrollTop = savedScroll
-    })
-  }, [])
-
-  // Track previous activeFile to know what to save when switching
+  // Track previous activeFile
   const previousActiveFileRef = useRef<string | null>(null)
 
   // Handle tab switch and first open
   useEffect(() => {
     if (!activeFile) return
-    const view = editorViewRef.current
-    if (!view) return
 
     const previousFile = previousActiveFileRef.current
-
-    // Save current view state back to map before switching
-    if (previousFile && previousFile !== activeFile) {
-      editorStatesRef.current.set(previousFile, view.state)
-    }
-
     previousActiveFileRef.current = activeFile
 
-    // If we already have a state for this file, swap it in
-    const existingState = editorStatesRef.current.get(activeFile)
-    if (existingState) {
-      switchToFile(activeFile, previousFile !== activeFile ? previousFile : null, existingState)
+    // If we have cached content or saved state, mount immediately
+    if (editorStatesRef.current.has(activeFile) || fileContents.current[activeFile]) {
+      mountEditor(fileContents.current[activeFile] || '')
       return
     }
 
-    // First open: load file content then build state
-    const loadAndSwitch = async () => {
-      let content = fileContents.current[activeFile]
-      if (!content) {
-        content = await window.electronAPI.readFile(activeFile)
-        fileContents.current[activeFile] = content
-      }
-      // B4: abort if user switched away before the async read resolved
-      if (useEditorStore.getState().activeFile !== activeFile) return
-      const newState = buildState(content)
-      editorStatesRef.current.set(activeFile, newState)
-      switchToFile(activeFile, previousFile !== activeFile ? previousFile : null, newState)
+    // First open: load file content
+    const load = async () => {
+      const content = await window.electronAPI.readFile(activeFile)
+      if (useEditorStore.getState().activeFile !== activeFile) return // B4: abort if switched away
+      fileContents.current[activeFile] = content
+      mountEditor(content)
     }
-    loadAndSwitch()
-  }, [activeFile, buildState, switchToFile])
+    load()
+  }, [activeFile, mountEditor])
 
   // Hot-swap lineWrapping via Compartment when wordWrap changes
   useEffect(() => {
