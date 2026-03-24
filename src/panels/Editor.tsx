@@ -23,6 +23,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
   const { activeFile, openFiles, setSelection, setActiveFile, closeFile } = useEditorStore()
+  const pendingReplacement = useEditorStore((s) => s.pendingReplacement)
+  const clearReplacement = useEditorStore((s) => s.clearReplacement)
   const fileContents = useRef<Record<string, string>>({})
 
   // Load file content when active file changes
@@ -80,6 +82,18 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     const content = editorViewRef.current.state.doc.toString()
     await window.electronAPI.writeFile(activeFile, content)
   }, [activeFile])
+
+  useEffect(() => {
+    if (pendingReplacement !== null && editorViewRef.current) {
+      const sel = useEditorStore.getState().selection
+      if (sel) {
+        editorViewRef.current.dispatch({
+          changes: { from: sel.from, to: sel.to, insert: pendingReplacement },
+        })
+      }
+      clearReplacement()
+    }
+  }, [pendingReplacement, clearReplacement])
 
   // Ctrl+S / Cmd+S to save
   useEffect(() => {

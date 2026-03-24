@@ -9,6 +9,7 @@ import { DiffView } from '../components/DiffView'
 
 export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
+  const replaceSelection = useEditorStore((s) => s.replaceSelection)
   const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
   const { systemPrompt, contextScope, models } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
@@ -42,9 +43,8 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   }, [selection, selectedProviders, systemPrompt, models, startRequest])
 
   const handleApply = useCallback((text: string) => {
-    // TODO: replace selection in editor with AI result
-    console.log('Apply:', text)
-  }, [])
+    replaceSelection(text)
+  }, [replaceSelection])
 
   const toggleProvider = (provider: string) => {
     if (selectedProviders.includes(provider)) {
