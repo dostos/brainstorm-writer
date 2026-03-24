@@ -60,6 +60,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('file:find-pdfs', async (_e, dirPath: string) => fileManager.findPdfs(dirPath))
+  ipcMain.handle('file:search-tex', async (_e, dirPath: string, searchText: string) => fileManager.searchInTexFiles(dirPath, searchText))
   ipcMain.handle('file:read', async (_e, filePath: string) => fileManager.readFile(filePath))
   ipcMain.handle('file:read-buffer', async (_e, filePath: string) => fileManager.readFileBuffer(filePath))
   ipcMain.handle('file:write', async (_e, filePath: string, content: string) => fileManager.writeFile(filePath, content))

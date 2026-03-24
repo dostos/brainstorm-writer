@@ -159,21 +159,36 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale).catch(console.error)
   }, [pdfDoc, currentPage, effectiveScale, continuousMode, scale])
 
-  // SyncTeX click handler (on the container, not canvas directly since text layer is on top)
+  // Double-click: find the selected/clicked text in .tex source files and open
   const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
-    // Only trigger on double-click to avoid interfering with text selection
     if (e.detail < 2) return
+
+    // First try SyncTeX
     const container = e.currentTarget
     const rect = container.getBoundingClientRect()
     const x = (e.clientX - rect.left) / effectiveScale
     const y = (e.clientY - rect.top) / effectiveScale
 
-    const result = await window.electronAPI.synctexInverse(pageNum, x, y)
-    if (result) {
-      openFile(result.file)
-      setActiveFile(result.file)
+    const synctexResult = await window.electronAPI.synctexInverse(pageNum, x, y)
+    if (synctexResult) {
+      openFile(synctexResult.file)
+      setActiveFile(synctexResult.file)
+      return
     }
-  }, [effectiveScale, openFile, setActiveFile])
+
+    // Fallback: search selected text in .tex files
+    if (!projectPath) return
+    const sel = document.getSelection()
+    const selectedText = sel?.toString().trim()
+    if (!selectedText || selectedText.length < 5) return
+
+    const searchResult = await window.electronAPI.searchTex(projectPath, selectedText)
+    if (searchResult) {
+      openFile(searchResult.file)
+      setActiveFile(searchResult.file)
+      // TODO: jump to searchResult.line in editor
+    }
+  }, [effectiveScale, openFile, setActiveFile, projectPath])
 
   // Capture PDF text selection → push to editor store for AI panel
   const { setSelection } = useEditorStore()

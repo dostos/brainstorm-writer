@@ -63,6 +63,56 @@ export class FileManager {
     } catch { /* permission error etc */ }
   }
 
+  // Search for text in .tex files, return { file, line } of first match
+  searchInTexFiles(dirPath: string, searchText: string): { file: string; line: number } | null {
+    const texFiles = this.findTexFiles(dirPath)
+    // Normalize: collapse whitespace for fuzzy matching
+    const needle = searchText.replace(/\s+/g, ' ').trim()
+    // Try progressively shorter snippets (first 80 chars, 40, 20)
+    for (const len of [needle.length, 80, 40, 20]) {
+      const snippet = needle.slice(0, len)
+      if (snippet.length < 5) continue
+      for (const file of texFiles) {
+        try {
+          const content = fs.readFileSync(file, 'utf-8')
+          const normalizedContent = content.replace(/\s+/g, ' ')
+          const idx = normalizedContent.indexOf(snippet)
+          if (idx !== -1) {
+            // Find line number
+            const beforeMatch = content.slice(0, content.indexOf(searchText.slice(0, 20)) !== -1
+              ? content.indexOf(searchText.slice(0, 20))
+              : idx)
+            const line = (beforeMatch.match(/\n/g) || []).length + 1
+            return { file, line }
+          }
+        } catch { /* skip unreadable */ }
+      }
+    }
+    return null
+  }
+
+  private findTexFiles(dirPath: string, maxDepth = 3): string[] {
+    const results: string[] = []
+    this.findTexFilesRecursive(dirPath, results, 0, maxDepth)
+    return results
+  }
+
+  private findTexFilesRecursive(dirPath: string, results: string[], depth: number, maxDepth: number): void {
+    if (depth > maxDepth) return
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        const fullPath = path.join(dirPath, entry.name)
+        if (entry.isFile() && entry.name.endsWith('.tex')) {
+          results.push(fullPath)
+        } else if (entry.isDirectory()) {
+          this.findTexFilesRecursive(fullPath, results, depth + 1, maxDepth)
+        }
+      }
+    } catch { /* permission error */ }
+  }
+
   fileExists(filePath: string): boolean {
     return fs.existsSync(filePath)
   }
