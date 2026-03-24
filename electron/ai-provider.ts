@@ -108,6 +108,20 @@ export class AiProviderManager {
         return this.streamViaCli(providerId, CLI_MAP[providerId], messages, window, controller, request)
       }
 
+      // OpenAI CLI mode: no standalone CLI tool; use OPENAI_API_KEY env var automatically
+      if (mode === 'cli' && providerId === 'openai') {
+        const envKey = process.env.OPENAI_API_KEY
+        if (!envKey) {
+          window.webContents.send('ai:stream', {
+            provider: providerId,
+            type: 'error',
+            error: 'CLI mode for OpenAI requires OPENAI_API_KEY environment variable to be set.',
+          })
+          return Promise.resolve()
+        }
+        return this.streamOpenAI(providerId, messages, model, envKey, window, controller, request)
+      }
+
       if (providerId === 'claude') {
         return this.streamClaude(providerId, messages, model, keys['claude'], window, controller, request)
       } else if (providerId === 'openai') {
