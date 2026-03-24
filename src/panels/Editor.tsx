@@ -308,6 +308,24 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     }
   }, [activeFile, markClean])
 
+  // Auto-save dirty files every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!editorViewRef.current) return
+      const { dirtyFiles: dirty, markClean: clean } = useEditorStore.getState()
+      for (const file of dirty) {
+        const content = fileContents.current[file]
+        if (content !== undefined) {
+          try {
+            await window.electronAPI.writeFile(file, content)
+            clean(file)
+          } catch { /* silently ignore auto-save errors */ }
+        }
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   useEffect(() => {
     if (pendingReplacement !== null && editorViewRef.current) {
       const sel = useEditorStore.getState().selection
