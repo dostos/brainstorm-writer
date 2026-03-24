@@ -116,8 +116,13 @@ export class SettingsManager {
 
   setApiKey(provider: string, key: string): void {
     const keys = (this.store.get('apiKeys') as StoredKeys) || {}
-    // In production, encrypt via safeStorage before storing
-    keys[provider as keyof StoredKeys] = this.testing ? key : this.encrypt(key)
+    // B9: if key is falsy, delete the stored key so env var fallback is used
+    if (!key) {
+      delete keys[provider as keyof StoredKeys]
+    } else {
+      // In production, encrypt via safeStorage before storing
+      keys[provider as keyof StoredKeys] = this.testing ? key : this.encrypt(key)
+    }
     this.store.set('apiKeys', keys)
   }
 

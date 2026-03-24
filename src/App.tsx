@@ -47,8 +47,19 @@ export default function App() {
     const cleanupLog = window.electronAPI.onBuildLog((data) => {
       appendLog(data)
     })
-    const cleanupDone = window.electronAPI.onBuildDone(({ code }) => {
+    const cleanupDone = window.electronAPI.onBuildDone(async ({ code }) => {
       if (code === 0) {
+        // v1.0 #4: Re-parse SyncTeX after a successful build
+        const projectPath = useProjectStore.getState().projectPath
+        if (projectPath) {
+          const candidates = ['main.synctex.gz', 'output/main.synctex.gz']
+          for (const name of candidates) {
+            try {
+              await window.electronAPI.parseSynctex(`${projectPath}/${name}`)
+              break
+            } catch { /* try next candidate */ }
+          }
+        }
         setStatus('success')
         setFlashGreen(true)
         setTimeout(() => {

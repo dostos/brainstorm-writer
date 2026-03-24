@@ -22,8 +22,7 @@ const latexMode = StreamLanguage.define({
   },
 })
 
-// Compartment for hot-swapping lineWrapping without rebuilding entire state
-const wrapCompartment = new Compartment()
+// wrapCompartment is created per-component instance (see useRef inside component)
 
 // LaTeX command completions using snippetCompletion for tabstop support
 // Template syntax: #{N} for tabstops, #{} for cursor after completion
@@ -151,6 +150,8 @@ function latexCompletions(context: CompletionContext): CompletionResult | null {
 export const Editor: React.FC<IDockviewPanelProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
+  // B5: Compartment lives inside component to avoid RangeError on remount
+  const wrapCompartmentRef = useRef(new Compartment())
   // Map from file path -> saved EditorState for that file
   const editorStatesRef = useRef<Map<string, EditorState>>(new Map())
   // Map from file path -> scroll position
@@ -159,6 +160,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const [savedFlash, setSavedFlash] = useState<string | null>(null)
   const { activeFile, openFiles, setSelection, setActiveFile, closeFile } = useEditorStore()
   const pendingReplacement = useEditorStore((s) => s.pendingReplacement)
+  const replacementRange = useEditorStore((s) => s.replacementRange)
   const clearReplacement = useEditorStore((s) => s.clearReplacement)
   const markDirty = useEditorStore((s) => s.markDirty)
   const markClean = useEditorStore((s) => s.markClean)
@@ -200,7 +202,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         latexMode,
         search(),
         keymap.of(searchKeymap),
-        wrapCompartment.of(wordWrapRef.current ? EditorView.lineWrapping : []),
+        wrapCompartmentRef.current.of(wordWrapRef.current ? EditorView.lineWrapping : []),
         autocompletion({ override: [latexCompletions] }),
         EditorView.updateListener.of((update) => {
           if (update.selectionSet) {
@@ -275,6 +277,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         content = await window.electronAPI.readFile(activeFile)
         fileContents.current[activeFile] = content
       }
+      // B4: abort if user switched away before the async read resolved
+      if (useEditorStore.getState().activeFile !== activeFile) return
       const newState = buildState(content)
       editorStatesRef.current.set(activeFile, newState)
       switchToFile(activeFile, previousFile !== activeFile ? previousFile : null, newState)
@@ -287,7 +291,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     const view = editorViewRef.current
     if (!view) return
     view.dispatch({
-      effects: wrapCompartment.reconfigure(wordWrap ? EditorView.lineWrapping : []),
+      effects: wrapCompartmentRef.current.reconfigure(wordWrap ? EditorView.lineWrapping : []),
     })
     // Also update the stored state for the active file so future switches use updated wrap
     if (activeFile) {
@@ -328,15 +332,15 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
   useEffect(() => {
     if (pendingReplacement !== null && editorViewRef.current) {
-      const sel = useEditorStore.getState().selection
-      if (sel) {
+      const range = replacementRange ?? useEditorStore.getState().selection
+      if (range) {
         editorViewRef.current.dispatch({
-          changes: { from: sel.from, to: sel.to, insert: pendingReplacement },
+          changes: { from: range.from, to: range.to, insert: pendingReplacement },
         })
       }
       clearReplacement()
     }
-  }, [pendingReplacement, clearReplacement])
+  }, [pendingReplacement, replacementRange, clearReplacement])
 
   // Jump to line from PDF double-click
   const pendingJumpLine = useEditorStore((s) => s.pendingJumpLine)

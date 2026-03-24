@@ -46,6 +46,17 @@ function createWindow() {
   mainWindow.on('resize', saveBounds)
   mainWindow.on('move', saveBounds)
 
+  // v1.0 #2: Confirm close so users don't lose unsaved work
+  mainWindow.on('close', (e) => {
+    const choice = dialog.showMessageBoxSync(mainWindow!, {
+      type: 'question',
+      buttons: ['Close', 'Cancel'],
+      defaultId: 1,
+      message: 'Are you sure you want to close? Unsaved changes will be auto-saved.',
+    })
+    if (choice === 1) e.preventDefault()
+  })
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
@@ -202,10 +213,14 @@ app.whenReady().then(() => {
       mainWindow?.webContents.send('latex:log', data.toString())
     })
     proc.on('close', (code: number | null) => {
+      // B7: guard against a newer build having replaced this process
+      if (buildProcess !== proc) return
       buildProcess = null
       mainWindow?.webContents.send('latex:done', { code: code ?? 1 })
     })
     proc.on('error', (err: Error) => {
+      // B7: guard against a newer build having replaced this process
+      if (buildProcess !== proc) return
       buildProcess = null
       mainWindow?.webContents.send('latex:log', `Failed to start latexmk: ${err.message}\n`)
       mainWindow?.webContents.send('latex:done', { code: 1 })
