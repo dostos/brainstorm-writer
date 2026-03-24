@@ -143,25 +143,23 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     loadPdf().catch(console.error)
   }, [loadPdf])
 
-  // Render pages (continuous mode)
+  // Render pages with debounce (300ms) for smooth zoom
   useEffect(() => {
-    if (!pdfDoc || !continuousMode || scale === null) return
+    if (!pdfDoc || scale === null) return
     const render = async () => {
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const container = pageContainerRefs.current.get(i)
-        if (!container) continue
-        await renderPage(pdfDoc, i, container, effectiveScale)
+      if (continuousMode) {
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const container = pageContainerRefs.current.get(i)
+          if (!container) continue
+          await renderPage(pdfDoc, i, container, effectiveScale)
+        }
+      } else if (singlePageRef.current) {
+        await renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale)
       }
     }
-    const timer = setTimeout(() => render().catch(console.error), 50)
+    const timer = setTimeout(() => render().catch(console.error), 200)
     return () => clearTimeout(timer)
-  }, [pdfDoc, effectiveScale, continuousMode, totalPages, scale])
-
-  // Render single page
-  useEffect(() => {
-    if (!pdfDoc || continuousMode || !singlePageRef.current || scale === null) return
-    renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale).catch(console.error)
-  }, [pdfDoc, currentPage, effectiveScale, continuousMode, scale])
+  }, [pdfDoc, effectiveScale, continuousMode, totalPages, scale, currentPage])
 
   // Double-click: find the selected/clicked text in .tex source files and open
   const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
@@ -215,47 +213,78 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => document.removeEventListener('mouseup', handler)
   }, [setSelection])
 
-  // Middle-click panning (drag to scroll)
+  // Panning: Space+drag or middle-click drag
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
     let isPanning = false
+    let spaceDown = false
     let startX = 0
     let startY = 0
-    let scrollLeft = 0
-    let scrollTop = 0
+    let scrollL = 0
+    let scrollT = 0
 
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !spaceDown && e.target === document.body) {
+        spaceDown = true
+        container.style.cursor = 'grab'
+        e.preventDefault()
+      }
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceDown = false
+        if (!isPanning) container.style.cursor = ''
+      }
+    }
     const onDown = (e: MouseEvent) => {
-      if (e.button !== 1) return // middle click only
+      if (!spaceDown && e.button !== 1) return
       e.preventDefault()
       isPanning = true
       startX = e.clientX
       startY = e.clientY
-      scrollLeft = container.scrollLeft
-      scrollTop = container.scrollTop
+      scrollL = container.scrollLeft
+      scrollT = container.scrollTop
       container.style.cursor = 'grabbing'
     }
     const onMove = (e: MouseEvent) => {
       if (!isPanning) return
-      container.scrollLeft = scrollLeft - (e.clientX - startX)
-      container.scrollTop = scrollTop - (e.clientY - startY)
+      container.scrollLeft = scrollL - (e.clientX - startX)
+      container.scrollTop = scrollT - (e.clientY - startY)
     }
     const onUp = () => {
       isPanning = false
-      container.style.cursor = ''
+      container.style.cursor = spaceDown ? 'grab' : ''
     }
 
+    // Ctrl+scroll = zoom, Shift+scroll = horizontal scroll
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const delta = e.deltaY > 0 ? -0.15 : 0.15
+        adjustScale(delta)
+      } else if (e.shiftKey) {
+        e.preventDefault()
+        container.scrollLeft += e.deltaY
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('keyup', onKeyUp)
     container.addEventListener('mousedown', onDown)
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    // Prevent default middle-click auto-scroll
-    container.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault() })
+    container.addEventListener('wheel', onWheel, { passive: false })
+
     return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('keyup', onKeyUp)
       container.removeEventListener('mousedown', onDown)
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      container.removeEventListener('wheel', onWheel)
     }
-  }, [])
+  }, [adjustScale])
 
   // Watch for PDF changes
   useEffect(() => {
@@ -302,7 +331,7 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
             <span style={{ color: '#444' }}>|</span>
           </>
         )}
-        <button onClick={() => adjustScale(-0.1)}
+        <button onClick={() => adjustScale(-0.2)}
           style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>−</button>
         <span
           onClick={resetFit}
@@ -311,7 +340,7 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
         >
           {Math.round(effectiveScale * 100)}%
         </span>
-        <button onClick={() => adjustScale(0.1)}
+        <button onClick={() => adjustScale(0.2)}
           style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>+</button>
         <span style={{ color: '#444' }}>|</span>
         <button
