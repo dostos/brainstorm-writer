@@ -39,7 +39,8 @@ const DEFAULTS: Settings = {
 }
 
 export class SettingsManager {
-  private store: Store<{ settings: Settings; apiKeys: StoredKeys }>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private store: any
   private testing: boolean
 
   constructor(opts?: { testing?: boolean }) {
