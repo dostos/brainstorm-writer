@@ -172,9 +172,10 @@ export default function App() {
               dockviewApiRef.current?.getPanel('settings')?.focus()
             }
           }}
-          style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 16 }}
+          title="Settings"
+          style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', gap: 4 }}
         >
-          ⚙
+          ⚙<span style={{ fontSize: 11 }}>Settings</span>
         </button>
       </div>
       <div style={{ flex: 1 }}>

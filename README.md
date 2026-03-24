@@ -15,6 +15,14 @@ An Electron-based academic paper editing tool with multi-AI agent assistance. Ed
 - **Settings Panel** — Per-provider mode (API/CLI), model selection, system prompt, saved prompts
 - **Persistent State** — Remembers last project, window size/position, and all settings
 
+## Prerequisites
+
+- **Node.js 18+**
+- **latexmk** — required for building LaTeX projects
+  - macOS: `brew install latexmk`
+  - Linux: `apt install latexmk`
+- **CLI mode** (optional) — requires the `claude` and/or `gemini` CLI tools to be installed and authenticated
+
 ## Quick Start
 
 ```bash

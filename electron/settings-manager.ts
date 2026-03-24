@@ -60,9 +60,9 @@ Rules:
     gemini: 'gemini-2.0-flash',
   },
   providerModes: {
-    claude: 'cli',
-    openai: 'cli',
-    gemini: 'cli',
+    claude: 'api',
+    openai: 'api',
+    gemini: 'api',
   },
   timeout: 60000,
 }

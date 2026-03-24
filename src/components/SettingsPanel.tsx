@@ -132,8 +132,11 @@ export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
                 </div>
               )}
               {mode === 'cli' && (
-                <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
-                  Uses <code style={{ color: '#6c9' }}>{p.id === 'openai' ? 'N/A' : p.id}</code> CLI tool
+                <div style={{ fontSize: 10, marginTop: 4, color: p.id === 'openai' ? '#e8a000' : '#888' }}>
+                  {p.id === 'openai'
+                    ? 'OpenAI does not support CLI mode. Use API mode instead.'
+                    : <>Uses <code style={{ color: '#6c9' }}>{p.id}</code> CLI tool</>
+                  }
                 </div>
               )}
             </div>

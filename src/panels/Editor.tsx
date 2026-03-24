@@ -6,6 +6,7 @@ import { EditorState, Compartment } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { StreamLanguage } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search'
+import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
 import { useEditorStore } from '../stores/editor-store'
 
 // Simple LaTeX syntax highlighting via StreamLanguage
@@ -173,10 +174,14 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const handleSave = useCallback(async () => {
     if (!activeFile || !editorViewRef.current) return
     const content = editorViewRef.current.state.doc.toString()
-    await window.electronAPI.writeFile(activeFile, content)
-    markClean(activeFile)
-    setSavedFlash(activeFile)
-    setTimeout(() => setSavedFlash((prev) => (prev === activeFile ? null : prev)), 1500)
+    try {
+      await window.electronAPI.writeFile(activeFile, content)
+      markClean(activeFile)
+      setSavedFlash(activeFile)
+      setTimeout(() => setSavedFlash((prev) => (prev === activeFile ? null : prev)), 1500)
+    } catch (err) {
+      alert(`Failed to save file: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }, [activeFile, markClean])
 
   useEffect(() => {
