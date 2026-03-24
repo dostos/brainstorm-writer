@@ -51,11 +51,18 @@ function Node({ node, style, onContextMenu, onFileClick }: NodeRendererProps<Tre
         color: node.isSelected ? '#6c9' : '#ccc',
         background: node.isSelected ? 'rgba(102,204,153,0.1)' : 'transparent',
       }}
-      onClick={() => {
+      onClick={(e) => {
+        e.stopPropagation()
         if (node.isInternal) {
           node.toggle()
         } else {
-          // Directly open file by full path — avoid react-arborist selection indirection
+          onFileClick?.(node.data.path)
+        }
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        // Same action as single click — prevent react-arborist from handling differently
+        if (!node.isInternal) {
           onFileClick?.(node.data.path)
         }
       }}
@@ -184,8 +191,16 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
             width="100%"
             indent={16}
             rowHeight={24}
+            disableMultiSelection
+            disableEdit
+            onActivate={(node) => {
+              // Double-click / Enter — same as single click: open the file
+              if (node && !node.data.isDirectory) {
+                openFile(node.data.path)
+              }
+            }}
             onSelect={() => {
-              // File opening is handled directly in Node onClick via onFileClick
+              // Handled via Node onClick
             }}
           >
             {NodeWithMenu}
