@@ -6,6 +6,16 @@ interface Selection {
   to: number
 }
 
+interface InlineDiff {
+  file: string
+  from: number
+  to: number
+  original: string
+  suggested: string
+  comments: string
+  provider: string
+}
+
 interface EditorState {
   activeFile: string | null
   openFiles: string[]
@@ -15,6 +25,7 @@ interface EditorState {
   pendingJumpLine: number | null
   pendingPdfJump: { page: number; y: number } | null
   dirtyFiles: Set<string>
+  pendingInlineDiff: InlineDiff | null
   setActiveFile: (file: string) => void
   setSelection: (selection: Selection | null) => void
   openFile: (file: string) => void
@@ -27,6 +38,9 @@ interface EditorState {
   clearPdfJump: () => void
   markDirty: (file: string) => void
   markClean: (file: string) => void
+  showInlineDiff: (diff: InlineDiff) => void
+  acceptInlineDiff: () => void
+  rejectInlineDiff: () => void
 }
 
 export const useEditorStore = create<EditorState>()((set) => ({
@@ -38,6 +52,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
   pendingJumpLine: null,
   pendingPdfJump: null,
   dirtyFiles: new Set<string>(),
+  pendingInlineDiff: null,
   setActiveFile: (file) => set({ activeFile: file }),
   setSelection: (selection) => set({ selection }),
   openFile: (file) =>
@@ -73,4 +88,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
       newDirty.delete(file)
       return { dirtyFiles: newDirty }
     }),
+  showInlineDiff: (diff) => set({ pendingInlineDiff: diff }),
+  acceptInlineDiff: () => set({ pendingInlineDiff: null }),
+  rejectInlineDiff: () => set({ pendingInlineDiff: null }),
 }))
