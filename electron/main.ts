@@ -79,7 +79,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('settings:get', () => settingsManager.getAll())
   ipcMain.handle('settings:set', (_e, settings) => {
-    const allowedKeys = ['systemPrompt', 'contextTemplate', 'contextScope', 'savedPrompts', 'models', 'providerModes', 'timeout']
+    const allowedKeys = ['systemPrompt', 'contextTemplate', 'contextScope', 'savedPrompts', 'models', 'providerModes', 'rootTexFile', 'timeout']
     const filtered: Record<string, unknown> = {}
     for (const key of allowedKeys) {
       if (key in settings) filtered[key] = settings[key]
@@ -179,26 +179,25 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('latex:build', async (_e, projectPath: string) => {
-    // Find main .tex file
-    let mainTexFile: string | null = null
-    try {
-      const files = fs.readdirSync(projectPath)
-      // First look for main.tex
-      if (files.includes('main.tex')) {
-        mainTexFile = 'main.tex'
-      } else {
-        // Look for first .tex file containing \documentclass
-        for (const file of files) {
-          if (file.endsWith('.tex')) {
-            const content = fs.readFileSync(path.join(projectPath, file), 'utf8')
-            if (content.includes('\\documentclass')) {
-              mainTexFile = file
-              break
+    // Find main .tex file — use configured rootTexFile or auto-detect
+    let mainTexFile: string | null = settingsManager.getAll().rootTexFile || null
+    if (!mainTexFile) {
+      try {
+        const files = fs.readdirSync(projectPath)
+        if (files.includes('main.tex')) {
+          mainTexFile = 'main.tex'
+        } else {
+          for (const file of files) {
+            if (file.endsWith('.tex')) {
+              const content = fs.readFileSync(path.join(projectPath, file), 'utf8')
+              if (content.includes('\\documentclass')) {
+                mainTexFile = file
+                break
+              }
             }
           }
         }
-      }
-    } catch (err) {
+      } catch (err) {
       mainWindow?.webContents.send('latex:log', `Error finding .tex file: ${err}\n`)
       mainWindow?.webContents.send('latex:done', { code: 1 })
       return

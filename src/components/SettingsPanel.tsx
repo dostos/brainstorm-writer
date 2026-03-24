@@ -187,6 +187,18 @@ export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
         </div>
       </div>
 
+      {/* Root TeX File */}
+      <div style={{ marginBottom: 20 }}>
+        <h4 style={{ color: '#6c9', fontSize: 13, marginBottom: 8 }}>Root TeX File</h4>
+        <p style={{ color: '#666', fontSize: 10, marginBottom: 4 }}>Main file for building (e.g. main.tex). Leave empty to auto-detect.</p>
+        <input
+          value={settings.rootTexFile || ''}
+          onChange={(e) => saveSettings({ rootTexFile: e.target.value })}
+          placeholder="Auto-detect (main.tex or first \documentclass)"
+          style={inputStyle}
+        />
+      </div>
+
       {/* Timeout */}
       <div>
         <h4 style={{ color: '#6c9', fontSize: 13, marginBottom: 8 }}>Timeout (seconds)</h4>

@@ -126,13 +126,25 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => observer.disconnect()
   }, [pdfDoc, computeFitScale, manualScale])
 
-  // Try to parse a SyncTeX file next to the given PDF path (best-effort, ignore errors)
+  // Try to parse SyncTeX; if not found, auto-build to generate it
   const tryParseSynctex = useCallback(async (pdfPath: string) => {
     const synctexPath = pdfPath.replace(/\.pdf$/, '.synctex.gz')
     try {
       await window.electronAPI.parseSynctex(synctexPath)
-    } catch { /* synctex not available or file missing */ }
-  }, [])
+    } catch {
+      // SyncTeX file not found — trigger a build to generate it
+      if (projectPath) {
+        console.log('[PdfViewer] No SyncTeX found, auto-building to generate...')
+        try {
+          await window.electronAPI.buildLatex(projectPath)
+          // After build, try parsing again
+          try {
+            await window.electronAPI.parseSynctex(synctexPath)
+          } catch { /* still not available */ }
+        } catch { /* build failed */ }
+      }
+    }
+  }, [projectPath])
 
   // Load PDF — single IPC call finds the best PDF in the project
   const loadPdf = useCallback(async () => {

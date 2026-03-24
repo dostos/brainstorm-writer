@@ -8,7 +8,8 @@ export interface Settings {
   contextScope: 'selection' | 'section' | 'full'
   savedPrompts: string[]
   models: Record<string, string>
-  providerModes: Record<string, 'api' | 'cli'>  // per-provider: use API key or CLI tool
+  providerModes: Record<string, 'api' | 'cli'>
+  rootTexFile: string  // main tex file name (e.g. 'main.tex'), empty = auto-detect
   timeout: number
 }
 
@@ -64,6 +65,7 @@ Rules:
     openai: 'api',
     gemini: 'api',
   },
+  rootTexFile: '',
   timeout: 60000,
 }
 

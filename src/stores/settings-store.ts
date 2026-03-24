@@ -36,6 +36,7 @@ Rules:
   savedPrompts: [],
   models: { claude: 'claude-sonnet-4-20250514', openai: 'gpt-4o', gemini: 'gemini-2.0-flash' },
   providerModes: { claude: 'api', openai: 'api', gemini: 'api' },
+  rootTexFile: '',
   timeout: 60000,
   setSettings: (settings) => set(settings),
   loadFromMain: async () => {
