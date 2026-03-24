@@ -11,7 +11,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
   const replaceSelection = useEditorStore((s) => s.replaceSelection)
   const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
-  const { systemPrompt, contextScope, models } = useSettingsStore()
+  const { systemPrompt, contextScope, models, contextTemplate } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
 
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
@@ -31,16 +31,44 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
 
     startRequest(selectedProviders)
 
-    // TODO: build context based on contextScope (for now, send selection only)
+    let context = ''
+    const { activeFile, openFiles } = useEditorStore.getState()
+
+    if (contextScope === 'section' && activeFile) {
+      const content = await window.electronAPI.readFile(activeFile)
+      context = content
+    } else if (contextScope === 'full') {
+      const parts: string[] = []
+      for (const file of openFiles) {
+        if (file.endsWith('.tex')) {
+          const content = await window.electronAPI.readFile(file)
+          parts.push(`--- ${file.split('/').pop()} ---\n${content}`)
+        }
+      }
+      context = parts.join('\n\n')
+    }
+    // contextScope === 'selection' → context stays empty
+
+    // Apply context template with paper metadata placeholders
+    // Extract basic metadata from the first .tex file if available
+    let formattedContext = contextTemplate
+      .replace('{{title}}', extractMetadata(context, 'title'))
+      .replace('{{authors}}', extractMetadata(context, 'author'))
+      .replace('{{section}}', activeFile?.split('/').pop() || '')
+
+    if (context) {
+      formattedContext += '\n\n' + context
+    }
+
     await window.electronAPI.aiRequest({
       providers: selectedProviders,
       systemPrompt,
-      context: '', // Will be populated based on contextScope
+      context: formattedContext,
       selectedText: selection.text,
       userPrompt,
       models,
     })
-  }, [selection, selectedProviders, systemPrompt, models, startRequest])
+  }, [selection, selectedProviders, systemPrompt, contextScope, contextTemplate, models, startRequest])
 
   const handleApply = useCallback((text: string) => {
     replaceSelection(text)
@@ -139,4 +167,10 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
       </div>
     </div>
   )
+}
+
+// Helper to extract LaTeX metadata
+function extractMetadata(texContent: string, command: string): string {
+  const match = texContent.match(new RegExp(`\\\\${command}\\{([^}]*)\\}`))
+  return match?.[1] || ''
 }
