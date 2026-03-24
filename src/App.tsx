@@ -21,14 +21,20 @@ export default function App() {
   const dockviewApiRef = useRef<any>(null)
 
   useEffect(() => {
-    useSettingsStore.getState().loadFromMain()
-    // Auto-load last opened project
-    window.electronAPI.getLastProject().then((result) => {
-      if (result) {
-        useProjectStore.getState().setProject(result.projectPath, result.tree)
-        window.electronAPI.watchProject(result.projectPath)
-      }
-    })
+    // Small delay to ensure IPC handlers are registered in main process
+    const timer = setTimeout(async () => {
+      try {
+        await useSettingsStore.getState().loadFromMain()
+      } catch { /* settings not ready yet */ }
+      try {
+        const result = await window.electronAPI.getLastProject()
+        if (result) {
+          useProjectStore.getState().setProject(result.projectPath, result.tree)
+          window.electronAPI.watchProject(result.projectPath)
+        }
+      } catch { /* no last project or handler not ready */ }
+    }, 200)
+    return () => clearTimeout(timer)
   }, [])
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
