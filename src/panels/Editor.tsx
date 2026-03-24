@@ -8,6 +8,11 @@ import { StreamLanguage } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search'
 import { autocompletion, CompletionContext, CompletionResult, snippetCompletion } from '@codemirror/autocomplete'
 import { useEditorStore } from '../stores/editor-store'
+import { useAiStore } from '../stores/ai-store'
+import { useSettingsStore } from '../stores/settings-store'
+import { createInlineDiffField, showInlineDiffEffect, clearInlineDiffEffect } from '../editor/inline-diff-field'
+import { createInlinePromptField, showPromptBarEffect, hidePromptBarEffect } from '../editor/inline-prompt-field'
+import { parseAiResponse, stripCodeFences } from './AiPanel'
 
 // Simple LaTeX syntax highlighting via StreamLanguage
 const latexMode = StreamLanguage.define({
@@ -166,6 +171,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const markClean = useEditorStore((s) => s.markClean)
   const dirtyFiles = useEditorStore((s) => s.dirtyFiles)
   const jumpToPdf = useEditorStore((s) => s.jumpToPdf)
+  const pendingInlineDiff = useEditorStore((s) => s.pendingInlineDiff)
   const fileContents = useRef<Record<string, string>>({})
 
   // Keep a ref to activeFile so update listener can access it without stale closures
@@ -200,11 +206,162 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         useEditorStore.getState().markDirty(activeFileRef.current)
       }
     }),
+    // Inline diff field — accept replaces text + clears decoration; reject just clears
+    createInlineDiffField(
+      () => {
+        const diff = useEditorStore.getState().pendingInlineDiff
+        if (diff && editorViewRef.current) {
+          editorViewRef.current.dispatch({
+            changes: { from: diff.from, to: diff.to, insert: diff.suggested },
+            effects: clearInlineDiffEffect.of(undefined),
+          })
+          useEditorStore.getState().acceptInlineDiff()
+          if (activeFileRef.current) {
+            useEditorStore.getState().markDirty(activeFileRef.current)
+          }
+        }
+      },
+      () => {
+        if (editorViewRef.current) {
+          editorViewRef.current.dispatch({
+            effects: clearInlineDiffEffect.of(undefined),
+          })
+        }
+        useEditorStore.getState().rejectInlineDiff()
+      },
+    ),
+    // Inline prompt field — onSubmit triggers AI request; onCancel hides bar
+    createInlinePromptField(
+      async (prompt, selectedText) => {
+        editorViewRef.current?.dispatch({ effects: hidePromptBarEffect.of(undefined) })
+        await handleInlineAiRequestRef.current(prompt, selectedText)
+      },
+      () => {
+        editorViewRef.current?.dispatch({ effects: hidePromptBarEffect.of(undefined) })
+      },
+    ),
+    // Cmd+K: show inline prompt bar at selection start
+    keymap.of([{
+      key: 'Mod-k',
+      run: (view) => {
+        const sel = view.state.selection.main
+        if (sel.from === sel.to) return false
+        const text = view.state.doc.sliceString(sel.from, sel.to)
+        view.dispatch({
+          effects: showPromptBarEffect.of({ pos: sel.from, selectedText: text }),
+        })
+        return true
+      },
+    }]),
+    // Tab to accept / Esc to reject inline diff
+    keymap.of([
+      {
+        key: 'Tab',
+        run: () => {
+          const diff = useEditorStore.getState().pendingInlineDiff
+          if (!diff) return false
+          const view = editorViewRef.current
+          if (view) {
+            view.dispatch({
+              changes: { from: diff.from, to: diff.to, insert: diff.suggested },
+              effects: clearInlineDiffEffect.of(undefined),
+            })
+            if (activeFileRef.current) {
+              useEditorStore.getState().markDirty(activeFileRef.current)
+            }
+          }
+          useEditorStore.getState().acceptInlineDiff()
+          return true
+        },
+      },
+      {
+        key: 'Escape',
+        run: () => {
+          const diff = useEditorStore.getState().pendingInlineDiff
+          if (!diff) return false
+          editorViewRef.current?.dispatch({
+            effects: clearInlineDiffEffect.of(undefined),
+          })
+          useEditorStore.getState().rejectInlineDiff()
+          return true
+        },
+      },
+    ]),
   ]
+
+  // Inline AI request handler — ref so buildExtensions can call it without stale closure
+  const handleInlineAiRequestRef = useRef(async (_prompt: string, _selectedText: string) => {})
+
+  const handleInlineAiRequest = useCallback(async (prompt: string, selectedText: string) => {
+    const view = editorViewRef.current
+    const file = useEditorStore.getState().activeFile
+    if (!view || !file) return
+
+    const sel = view.state.selection.main
+    const settings = useSettingsStore.getState()
+    const providers = useAiStore.getState().selectedProviders
+    const provider = providers[0] || 'claude'
+
+    let context = ''
+    if (settings.contextScope === 'section') {
+      context = view.state.doc.toString()
+    }
+
+    useAiStore.getState().startRequest([provider])
+
+    try {
+      await window.electronAPI.aiRequest({
+        providers: [provider],
+        systemPrompt: settings.systemPrompt,
+        context,
+        selectedText,
+        userPrompt: prompt,
+        models: settings.models,
+        providerModes: settings.providerModes,
+      })
+    } catch (err: any) {
+      useAiStore.getState().finishProvider(provider, err.message || 'Request failed')
+      return
+    }
+
+    // Subscribe to ai-store for the provider's result
+    const unsubscribe = useAiStore.subscribe((state) => {
+      const result = state.results[provider]
+      if (result?.done && !result.error) {
+        unsubscribe()
+        const parsed = parseAiResponse(result.text)
+        const suggested = stripCodeFences(parsed.revised || result.text)
+        const comments = parsed.comments || ''
+
+        useEditorStore.getState().showInlineDiff({
+          file,
+          from: sel.from,
+          to: sel.to,
+          original: selectedText,
+          suggested,
+          comments,
+          provider,
+        })
+
+        view.dispatch({
+          effects: showInlineDiffEffect.of({
+            from: sel.from,
+            to: sel.to,
+            original: selectedText,
+            suggested,
+            comments,
+            provider,
+          }),
+        })
+      }
+    })
+  }, [])
+
+  // Keep handleInlineAiRequestRef in sync
+  handleInlineAiRequestRef.current = handleInlineAiRequest
 
   // Mount editor for a specific file — no reactive deps to avoid spurious re-mounts
   const mountEditorRef = useRef((file: string, content: string) => {
-    console.log('[Editor] mountEditor called for:', file, 'content length:', content.length, 'hasSavedState:', editorStatesRef.current.has(file))
     if (!containerRef.current) return
 
     // Save current state before destroying
@@ -241,8 +398,6 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     previousActiveFileRef.current = activeFile
 
     // If we have cached content or saved state, mount immediately
-    console.log('[Editor] activeFile changed to:', activeFile, 'hasSavedState:', editorStatesRef.current.has(activeFile), 'hasCachedContent:', !!fileContents.current[activeFile])
-
     if (editorStatesRef.current.has(activeFile) || fileContents.current[activeFile]) {
       mountEditorRef.current(activeFile, fileContents.current[activeFile] || '')
       return
@@ -250,10 +405,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
     // First open: load file content
     const load = async () => {
-      console.log('[Editor] loading file:', activeFile)
       const content = await window.electronAPI.readFile(activeFile)
       const currentActive = useEditorStore.getState().activeFile
-      console.log('[Editor] file loaded:', activeFile, 'currentActive:', currentActive)
       if (currentActive !== activeFile) return
       fileContents.current[activeFile] = content
       mountEditorRef.current(activeFile, content)
@@ -316,6 +469,23 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       clearReplacement()
     }
   }, [pendingReplacement, replacementRange, clearReplacement])
+
+  // When pendingInlineDiff is set from outside (e.g. AI Panel "Edit" button),
+  // dispatch the showInlineDiffEffect to the current CodeMirror view
+  useEffect(() => {
+    if (pendingInlineDiff && editorViewRef.current) {
+      editorViewRef.current.dispatch({
+        effects: showInlineDiffEffect.of({
+          from: pendingInlineDiff.from,
+          to: pendingInlineDiff.to,
+          original: pendingInlineDiff.original,
+          suggested: pendingInlineDiff.suggested,
+          comments: pendingInlineDiff.comments,
+          provider: pendingInlineDiff.provider,
+        }),
+      })
+    }
+  }, [pendingInlineDiff])
 
   // Jump to line from PDF double-click
   const pendingJumpLine = useEditorStore((s) => s.pendingJumpLine)
