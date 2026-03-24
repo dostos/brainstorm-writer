@@ -198,9 +198,10 @@ app.whenReady().then(() => {
           }
         }
       } catch (err) {
-      mainWindow?.webContents.send('latex:log', `Error finding .tex file: ${err}\n`)
-      mainWindow?.webContents.send('latex:done', { code: 1 })
-      return
+        mainWindow?.webContents.send('latex:log', `Error finding .tex file: ${err}\n`)
+        mainWindow?.webContents.send('latex:done', { code: 1 })
+        return
+      }
     }
 
     if (!mainTexFile) {
