@@ -3,6 +3,7 @@ export interface ElectronAPI {
   openProject: () => Promise<{ projectPath: string; tree: any[] } | null>
   getLastProject: () => Promise<{ projectPath: string; tree: any[] } | null>
   findPdfs: (dirPath: string) => Promise<string[]>
+  findProjectPdf: (projectPath: string) => Promise<{ path: string; buffer: ArrayBuffer } | null>
   searchTex: (dirPath: string, text: string) => Promise<{ file: string; line: number } | null>
   readFile: (filePath: string) => Promise<string>
   readFileBuffer: (filePath: string) => Promise<ArrayBuffer>
@@ -17,6 +18,11 @@ export interface ElectronAPI {
   aiRequest: (params: any) => Promise<void>
   onAiStream: (callback: (data: any) => void) => () => void
   cancelAiRequest: () => Promise<void>
+  // LaTeX build
+  buildLatex: (projectPath: string) => Promise<void>
+  cancelBuild: () => Promise<void>
+  onBuildLog: (callback: (data: string) => void) => () => void
+  onBuildDone: (callback: (result: { code: number }) => void) => () => void
   // Settings
   getSettings: () => Promise<any>
   setSettings: (settings: any) => Promise<void>

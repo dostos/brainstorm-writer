@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openProject: () => ipcRenderer.invoke('file:open-project'),
   getLastProject: () => ipcRenderer.invoke('file:get-last-project'),
   findPdfs: (dirPath: string) => ipcRenderer.invoke('file:find-pdfs', dirPath),
+  findProjectPdf: (projectPath: string) => ipcRenderer.invoke('file:find-project-pdf', projectPath),
   searchTex: (dirPath: string, text: string) => ipcRenderer.invoke('file:search-tex', dirPath, text),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
   readFileBuffer: (filePath: string) => ipcRenderer.invoke('file:read-buffer', filePath),
@@ -36,6 +37,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('ai:stream', handler)
   },
   cancelAiRequest: () => ipcRenderer.invoke('ai:cancel'),
+
+  // LaTeX build
+  buildLatex: (projectPath: string) => ipcRenderer.invoke('latex:build', projectPath),
+  cancelBuild: () => ipcRenderer.invoke('latex:cancel'),
+  onBuildLog: (callback: (data: string) => void) => {
+    const handler = (_event: any, data: string) => callback(data)
+    ipcRenderer.on('latex:log', handler)
+    return () => ipcRenderer.removeListener('latex:log', handler)
+  },
+  onBuildDone: (callback: (result: { code: number }) => void) => {
+    const handler = (_event: any, result: { code: number }) => callback(result)
+    ipcRenderer.on('latex:done', handler)
+    return () => ipcRenderer.removeListener('latex:done', handler)
+  },
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),

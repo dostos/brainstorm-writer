@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
+import fs from 'fs'
+import { spawn, ChildProcess } from 'child_process'
 import { SettingsManager } from './settings-manager'
 import { FileManager } from './file-manager'
 import { AiProviderManager } from './ai-provider'
@@ -13,6 +15,7 @@ let synctexData: SynctexData | null = null
 
 let mainWindow: BrowserWindow | null = null
 let currentProjectPath: string | null = null
+let buildProcess: ChildProcess | null = null
 
 function isPathInsideProject(filePath: string): boolean {
   if (!currentProjectPath) return false
@@ -88,6 +91,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('file:find-pdfs', async (_e, dirPath: string) => fileManager.findPdfs(dirPath))
+  ipcMain.handle('file:find-project-pdf', async (_e, projectPath: string) => fileManager.findProjectPdf(projectPath))
   ipcMain.handle('file:search-tex', async (_e, dirPath: string, searchText: string) => fileManager.searchInTexFiles(dirPath, searchText))
   ipcMain.handle('file:read', async (_e, filePath: string) => {
     if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
@@ -115,6 +119,75 @@ app.whenReady().then(() => {
 
   ipcMain.handle('ai:cancel', () => {
     aiManager.cancelAll()
+  })
+
+  ipcMain.handle('latex:build', async (_e, projectPath: string) => {
+    // Find main .tex file
+    let mainTexFile: string | null = null
+    try {
+      const files = fs.readdirSync(projectPath)
+      // First look for main.tex
+      if (files.includes('main.tex')) {
+        mainTexFile = 'main.tex'
+      } else {
+        // Look for first .tex file containing \documentclass
+        for (const file of files) {
+          if (file.endsWith('.tex')) {
+            const content = fs.readFileSync(path.join(projectPath, file), 'utf8')
+            if (content.includes('\\documentclass')) {
+              mainTexFile = file
+              break
+            }
+          }
+        }
+      }
+    } catch (err) {
+      mainWindow?.webContents.send('latex:log', `Error finding .tex file: ${err}\n`)
+      mainWindow?.webContents.send('latex:done', { code: 1 })
+      return
+    }
+
+    if (!mainTexFile) {
+      mainWindow?.webContents.send('latex:log', 'No main .tex file found in project directory.\n')
+      mainWindow?.webContents.send('latex:done', { code: 1 })
+      return
+    }
+
+    // Kill any existing build
+    if (buildProcess) {
+      buildProcess.kill()
+      buildProcess = null
+    }
+
+    const proc = spawn(
+      'latexmk',
+      ['-pdf', '-synctex=1', '-interaction=nonstopmode', mainTexFile],
+      { cwd: projectPath }
+    )
+    buildProcess = proc
+
+    proc.stdout.on('data', (data: Buffer) => {
+      mainWindow?.webContents.send('latex:log', data.toString())
+    })
+    proc.stderr.on('data', (data: Buffer) => {
+      mainWindow?.webContents.send('latex:log', data.toString())
+    })
+    proc.on('close', (code: number | null) => {
+      buildProcess = null
+      mainWindow?.webContents.send('latex:done', { code: code ?? 1 })
+    })
+    proc.on('error', (err: Error) => {
+      buildProcess = null
+      mainWindow?.webContents.send('latex:log', `Failed to start latexmk: ${err.message}\n`)
+      mainWindow?.webContents.send('latex:done', { code: 1 })
+    })
+  })
+
+  ipcMain.handle('latex:cancel', () => {
+    if (buildProcess) {
+      buildProcess.kill()
+      buildProcess = null
+    }
   })
 
   ipcMain.handle('synctex:parse', async (_e, synctexPath: string) => {
