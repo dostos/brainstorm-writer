@@ -15,7 +15,7 @@ import { DiffView } from '../components/DiffView'
 //   === SUGGESTIONS ===
 //   (bullet points)
 // Strip markdown code fences (```latex ... ``` or ``` ... ```) from AI output
-function stripCodeFences(text: string): string {
+export function stripCodeFences(text: string): string {
   return text
     .replace(/^```[\w]*\n?/gm, '')
     .replace(/\n?```$/gm, '')
@@ -364,6 +364,25 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
                   style={{ background: '#444', color: '#ccc', border: 'none', padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer' }}
                 >
                   {showDiff[result.provider] ? 'Text' : 'Diff'}
+                </button>
+                <button
+                  onClick={() => {
+                    const sel = lastSelectionRef.current
+                    if (!sel || sel.from < 0) return
+                    const parsed = parseAiResponse(result.text)
+                    useEditorStore.getState().showInlineDiff({
+                      file: useEditorStore.getState().activeFile || '',
+                      from: sel.from,
+                      to: sel.to,
+                      original: sel.text,
+                      suggested: stripCodeFences(parsed.revised || result.text),
+                      comments: parsed.comments || '',
+                      provider: result.provider,
+                    })
+                  }}
+                  style={{ background: '#3a3a5e', color: '#ccc', border: 'none', padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer' }}
+                >
+                  Edit
                 </button>
               </div>
             )}
