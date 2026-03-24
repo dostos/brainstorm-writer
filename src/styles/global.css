@@ -12,3 +12,40 @@ html, body, #root {
   background: #1e1e2e;
   color: #ccc;
 }
+
+/* dockview dark theme overrides */
+.dockview-theme-dark {
+  --dv-activegroup-hightlight-color: #6c9;
+  --dv-group-view-background-color: #1e1e2e;
+  --dv-tabs-and-actions-container-background-color: #16162a;
+  --dv-activegroup-visiblepanel-tab-background-color: #2a2a3e;
+  --dv-activegroup-visiblepanel-tab-color: #6c9;
+  --dv-inactivegroup-visiblepanel-tab-background-color: #252540;
+  --dv-inactivegroup-visiblepanel-tab-color: #888;
+  --dv-tab-divider-color: #333;
+  --dv-separator-border: #333;
+}
+
+/* CodeMirror overrides */
+.cm-editor {
+  height: 100%;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
