@@ -102,6 +102,14 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => observer.disconnect()
   }, [pdfDoc, computeFitScale, manualScale])
 
+  // Try to parse a SyncTeX file next to the given PDF path (best-effort, ignore errors)
+  const tryParseSynctex = useCallback(async (pdfPath: string) => {
+    const synctexPath = pdfPath.replace(/\.pdf$/, '.synctex.gz')
+    try {
+      await window.electronAPI.parseSynctex(synctexPath)
+    } catch { /* synctex not available or file missing */ }
+  }, [])
+
   // Load PDF — search root and common subdirectories
   const loadPdf = useCallback(async () => {
     if (!projectPath) return
@@ -118,6 +126,7 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
             setTotalPages(doc.numPages)
             setCurrentPage(1)
             setManualScale(null)
+            tryParseSynctex(pdfPath)
             return
           }
         } catch { /* not found, try next */ }
@@ -134,10 +143,11 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
           setTotalPages(doc.numPages)
           setCurrentPage(1)
           setManualScale(null)
+          tryParseSynctex(tree[0])
         }
       }
     } catch { /* no findPdfs handler or no PDFs */ }
-  }, [projectPath])
+  }, [projectPath, tryParseSynctex])
 
   useEffect(() => {
     loadPdf().catch(console.error)
