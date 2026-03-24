@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
 import { Tree, NodeRendererProps } from 'react-arborist'
 import { useProjectStore } from '../stores/project-store'
@@ -13,6 +13,12 @@ interface TreeNode {
   children?: TreeNode[]
 }
 
+interface ContextMenu {
+  x: number
+  y: number
+  node: TreeNode
+}
+
 function toTreeData(nodes: any[]): TreeNode[] {
   return nodes.map((n) => ({
     id: n.path,
@@ -23,7 +29,7 @@ function toTreeData(nodes: any[]): TreeNode[] {
   }))
 }
 
-function Node({ node, style }: NodeRendererProps<TreeNode>) {
+function Node({ node, style, onContextMenu }: NodeRendererProps<TreeNode> & { onContextMenu?: (e: React.MouseEvent, data: TreeNode) => void }) {
   const icon = node.data.isDirectory ? (node.isOpen ? '📂' : '📁') : '📄'
   const depth = node.level
   return (
@@ -43,6 +49,11 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
         background: node.isSelected ? 'rgba(102,204,153,0.1)' : 'transparent',
       }}
       onClick={() => node.isInternal ? node.toggle() : node.select()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onContextMenu?.(e, node.data)
+      }}
     >
       <span style={{ flexShrink: 0 }}>{icon}</span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.data.name}</span>
@@ -53,6 +64,7 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
 export const FileTree: React.FC<IDockviewPanelProps> = () => {
   const { projectPath, fileTree, setProject } = useProjectStore()
   const { openFile } = useEditorStore()
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
 
   const handleOpenProject = useCallback(async () => {
     const result = await window.electronAPI.openProject()
@@ -62,10 +74,76 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
     }
   }, [setProject])
 
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNode) => {
+    setContextMenu({ x: e.clientX, y: e.clientY, node })
+  }, [])
+
+  const refreshTree = useCallback(async () => {
+    if (!projectPath) return
+    const tree = await window.electronAPI.scanProject()
+    setProject(projectPath, tree)
+  }, [projectPath, setProject])
+
+  const handleNewFile = useCallback(async () => {
+    if (!contextMenu) return
+    const node = contextMenu.node
+    const dir = node.isDirectory ? node.path : node.path.substring(0, node.path.lastIndexOf('/'))
+    closeContextMenu()
+    const name = window.prompt('New file name (e.g. chapter.tex):')
+    if (!name || !name.trim()) return
+    const newPath = dir + '/' + name.trim()
+    try {
+      const tree = await window.electronAPI.createFile(newPath, '')
+      setProject(projectPath!, tree)
+    } catch (err: any) {
+      alert('Error creating file: ' + err.message)
+    }
+  }, [contextMenu, closeContextMenu, projectPath, setProject])
+
+  const handleRename = useCallback(async () => {
+    if (!contextMenu) return
+    const node = contextMenu.node
+    closeContextMenu()
+    const newName = window.prompt('New name:', node.name)
+    if (!newName || !newName.trim() || newName.trim() === node.name) return
+    const dir = node.path.substring(0, node.path.lastIndexOf('/'))
+    const newPath = dir + '/' + newName.trim()
+    try {
+      const tree = await window.electronAPI.renameFile(node.path, newPath)
+      setProject(projectPath!, tree)
+    } catch (err: any) {
+      alert('Error renaming: ' + err.message)
+    }
+  }, [contextMenu, closeContextMenu, projectPath, setProject])
+
+  const handleDelete = useCallback(async () => {
+    if (!contextMenu) return
+    const node = contextMenu.node
+    closeContextMenu()
+    const confirmed = window.confirm(`Delete "${node.name}"? This cannot be undone.`)
+    if (!confirmed) return
+    try {
+      const tree = await window.electronAPI.deleteFile(node.path)
+      setProject(projectPath!, tree)
+    } catch (err: any) {
+      alert('Error deleting: ' + err.message)
+    }
+  }, [contextMenu, closeContextMenu, projectPath, setProject])
+
   const treeData = toTreeData(fileTree)
 
+  // NodeRenderer wrapper to inject context menu handler
+  const NodeWithMenu = useCallback((props: NodeRendererProps<TreeNode>) => (
+    <Node {...props} onContextMenu={handleContextMenu} />
+  ), [handleContextMenu])
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      onClick={closeContextMenu}
+    >
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
         <button
           onClick={handleOpenProject}
@@ -103,10 +181,54 @@ export const FileTree: React.FC<IDockviewPanelProps> = () => {
               }
             }}
           >
-            {Node}
+            {NodeWithMenu}
           </Tree>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: '#2a2a3e',
+            border: '1px solid #444',
+            borderRadius: 4,
+            padding: '4px 0',
+            zIndex: 9999,
+            minWidth: 140,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            onClick={handleNewFile}
+            style={{ padding: '6px 14px', cursor: 'pointer', fontSize: 12, color: '#ccc' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#3a3a5e')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            New File
+          </div>
+          <div
+            onClick={handleRename}
+            style={{ padding: '6px 14px', cursor: 'pointer', fontSize: 12, color: '#ccc' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#3a3a5e')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            Rename
+          </div>
+          <div
+            onClick={handleDelete}
+            style={{ padding: '6px 14px', cursor: 'pointer', fontSize: 12, color: '#f66' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#3a3a5e')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            Delete
+          </div>
+        </div>
+      )}
     </div>
   )
 }

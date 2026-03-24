@@ -106,6 +106,35 @@ app.whenReady().then(() => {
     return fileManager.writeFile(filePath, content)
   })
 
+  ipcMain.handle('file:create', async (_e, filePath: string, content: string) => {
+    if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
+    fs.writeFileSync(filePath, content ?? '', 'utf8')
+    return currentProjectPath ? await fileManager.scanProject(currentProjectPath) : []
+  })
+
+  ipcMain.handle('file:rename', async (_e, oldPath: string, newPath: string) => {
+    if (!isPathInsideProject(oldPath)) throw new Error('Access denied: path is outside project directory')
+    if (!isPathInsideProject(newPath)) throw new Error('Access denied: path is outside project directory')
+    fs.renameSync(oldPath, newPath)
+    return currentProjectPath ? await fileManager.scanProject(currentProjectPath) : []
+  })
+
+  ipcMain.handle('file:delete', async (_e, filePath: string) => {
+    if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
+    const stat = fs.statSync(filePath)
+    if (stat.isDirectory()) {
+      fs.rmSync(filePath, { recursive: true })
+    } else {
+      fs.unlinkSync(filePath)
+    }
+    return currentProjectPath ? await fileManager.scanProject(currentProjectPath) : []
+  })
+
+  ipcMain.handle('file:scan', async () => {
+    if (!currentProjectPath) return []
+    return fileManager.scanProject(currentProjectPath)
+  })
+
   ipcMain.handle('file:watch', async (_e, projectPath: string) => {
     fileManager.watch(projectPath, (filePath) => {
       mainWindow?.webContents.send('file:changed', filePath)

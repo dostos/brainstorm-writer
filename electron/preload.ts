@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
   readFileBuffer: (filePath: string) => ipcRenderer.invoke('file:read-buffer', filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke('file:write', filePath, content),
+  createFile: (filePath: string, content: string) => ipcRenderer.invoke('file:create', filePath, content),
+  renameFile: (oldPath: string, newPath: string) => ipcRenderer.invoke('file:rename', oldPath, newPath),
+  deleteFile: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
+  scanProject: () => ipcRenderer.invoke('file:scan'),
   watchProject: (projectPath: string) => ipcRenderer.invoke('file:watch', projectPath),
   onFileChanged: (callback: (filePath: string) => void) => {
     const handler = (_event: any, filePath: string) => callback(filePath)

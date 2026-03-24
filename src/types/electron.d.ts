@@ -8,6 +8,10 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<string>
   readFileBuffer: (filePath: string) => Promise<ArrayBuffer>
   writeFile: (filePath: string, content: string) => Promise<void>
+  createFile: (filePath: string, content: string) => Promise<any[]>
+  renameFile: (oldPath: string, newPath: string) => Promise<any[]>
+  deleteFile: (filePath: string) => Promise<any[]>
+  scanProject: () => Promise<any[]>
   watchProject: (projectPath: string) => Promise<void>
   onFileChanged: (callback: (filePath: string) => void) => () => void
   // SyncTeX

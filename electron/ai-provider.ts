@@ -1,6 +1,11 @@
 import type { BrowserWindow } from 'electron'
 import { spawn, execFileSync, type ChildProcess } from 'child_process'
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface AiRequest {
   providers: string[]
   systemPrompt: string
@@ -9,6 +14,7 @@ export interface AiRequest {
   userPrompt: string
   models: Record<string, string>
   providerModes?: Record<string, 'api' | 'cli'>
+  history?: ConversationMessage[]
 }
 
 export interface AiMessages {
@@ -56,6 +62,27 @@ export class AiProviderManager {
     }
   }
 
+  /** Build an OpenAI-style messages array including conversation history. */
+  private buildApiMessages(request: AiRequest): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const history = request.history ?? []
+    const currentUser = this.buildMessages(request).user
+    return [
+      ...history,
+      { role: 'user' as const, content: currentUser },
+    ]
+  }
+
+  /** Build a flat prompt string for CLI mode, prepending history turns. */
+  private buildCliPrompt(request: AiRequest): string {
+    const messages = this.buildMessages(request)
+    const history = request.history ?? []
+    const historyText = history
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n\n')
+    const base = `${messages.system}\n\n${historyText ? historyText + '\n\n' : ''}${messages.user}`
+    return base
+  }
+
   getProviderIds(providers: string[]): string[] {
     return providers
   }
@@ -78,15 +105,15 @@ export class AiProviderManager {
 
       // If mode is CLI, go directly to CLI (skip API key check)
       if (mode === 'cli' && CLI_MAP[providerId]) {
-        return this.streamViaCli(providerId, CLI_MAP[providerId], messages, window, controller)
+        return this.streamViaCli(providerId, CLI_MAP[providerId], messages, window, controller, request)
       }
 
       if (providerId === 'claude') {
-        return this.streamClaude(providerId, messages, model, keys['claude'], window, controller)
+        return this.streamClaude(providerId, messages, model, keys['claude'], window, controller, request)
       } else if (providerId === 'openai') {
-        return this.streamOpenAI(providerId, messages, model, keys['openai'], window, controller)
+        return this.streamOpenAI(providerId, messages, model, keys['openai'], window, controller, request)
       } else if (providerId === 'gemini') {
-        return this.streamGemini(providerId, messages, model, keys['gemini'], window, controller)
+        return this.streamGemini(providerId, messages, model, keys['gemini'], window, controller, request)
       } else {
         window.webContents.send('ai:stream', {
           provider: providerId,
@@ -118,9 +145,10 @@ export class AiProviderManager {
     messages: AiMessages,
     window: BrowserWindow,
     controller: AbortController,
+    request?: AiRequest,
   ): Promise<void> {
     return new Promise((resolve) => {
-      const fullPrompt = `${messages.system}\n\n${messages.user}`
+      const fullPrompt = request ? this.buildCliPrompt(request) : `${messages.system}\n\n${messages.user}`
 
       // Find the actual CLI path to avoid shell alias issues
       const cliPath = whichCmd(cliName)
@@ -214,13 +242,14 @@ export class AiProviderManager {
     apiKey: string | undefined,
     window: BrowserWindow,
     controller: AbortController,
+    request?: AiRequest,
   ): Promise<void> {
     try {
       if (!apiKey) {
         // Fallback to CLI
         const cliPath = whichCmd('claude')
         if (cliPath) {
-          return this.streamViaCli(providerId, 'claude', messages, window, controller)
+          return this.streamViaCli(providerId, 'claude', messages, window, controller, request)
         }
         throw new Error('No API key for Claude and claude CLI not found')
       }
@@ -229,12 +258,14 @@ export class AiProviderManager {
       const Anthropic = require('@anthropic-ai/sdk').default ?? require('@anthropic-ai/sdk').Anthropic
       const client = new Anthropic({ apiKey })
 
+      const apiMessages = request ? this.buildApiMessages(request) : [{ role: 'user' as const, content: messages.user }]
+
       const stream = client.messages.stream(
         {
           model: model ?? 'claude-sonnet-4-20250514',
           max_tokens: 4096,
           system: messages.system,
-          messages: [{ role: 'user', content: messages.user }],
+          messages: apiMessages,
         },
         { signal: controller.signal },
       )
@@ -271,6 +302,7 @@ export class AiProviderManager {
     apiKey: string | undefined,
     window: BrowserWindow,
     controller: AbortController,
+    request?: AiRequest,
   ): Promise<void> {
     try {
       if (!apiKey) throw new Error('No API key for OpenAI. Install openai CLI or set OPENAI_API_KEY.')
@@ -279,13 +311,15 @@ export class AiProviderManager {
       const OpenAI = require('openai').default ?? require('openai').OpenAI
       const client = new OpenAI({ apiKey })
 
+      const apiMessages = request ? this.buildApiMessages(request) : [{ role: 'user' as const, content: messages.user }]
+
       const stream = await client.chat.completions.create(
         {
           model: model ?? 'gpt-4o',
           stream: true,
           messages: [
-            { role: 'system', content: messages.system },
-            { role: 'user', content: messages.user },
+            { role: 'system' as const, content: messages.system },
+            ...apiMessages,
           ],
         },
         { signal: controller.signal },
@@ -316,12 +350,13 @@ export class AiProviderManager {
     apiKey: string | undefined,
     window: BrowserWindow,
     controller: AbortController,
+    request?: AiRequest,
   ): Promise<void> {
     try {
       if (!apiKey) {
         const cliPath = whichCmd('gemini')
         if (cliPath) {
-          return this.streamViaCli(providerId, 'gemini', messages, window, controller)
+          return this.streamViaCli(providerId, 'gemini', messages, window, controller, request)
         }
         throw new Error('No API key for Gemini and gemini CLI not found')
       }
@@ -334,8 +369,18 @@ export class AiProviderManager {
         systemInstruction: messages.system,
       })
 
+      // Build Gemini-style contents array including history
+      const history = request?.history ?? []
+      const geminiContents = [
+        ...history.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+        { role: 'user', parts: [{ text: messages.user }] },
+      ]
+
       const result = await genModel.generateContentStream(
-        { contents: [{ role: 'user', parts: [{ text: messages.user }] }] },
+        { contents: geminiContents },
         { signal: controller.signal },
       )
 

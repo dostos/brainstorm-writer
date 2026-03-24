@@ -12,6 +12,7 @@ interface EditorState {
   selection: Selection | null
   pendingReplacement: string | null
   pendingJumpLine: number | null
+  pendingPdfJump: { page: number; y: number } | null
   dirtyFiles: Set<string>
   setActiveFile: (file: string) => void
   setSelection: (selection: Selection | null) => void
@@ -21,6 +22,8 @@ interface EditorState {
   clearReplacement: () => void
   jumpToLine: (line: number) => void
   clearJump: () => void
+  jumpToPdf: (page: number, y: number) => void
+  clearPdfJump: () => void
   markDirty: (file: string) => void
   markClean: (file: string) => void
 }
@@ -31,6 +34,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
   selection: null,
   pendingReplacement: null,
   pendingJumpLine: null,
+  pendingPdfJump: null,
   dirtyFiles: new Set<string>(),
   setActiveFile: (file) => set({ activeFile: file }),
   setSelection: (selection) => set({ selection }),
@@ -53,6 +57,8 @@ export const useEditorStore = create<EditorState>()((set) => ({
   clearReplacement: () => set({ pendingReplacement: null }),
   jumpToLine: (line) => set({ pendingJumpLine: line }),
   clearJump: () => set({ pendingJumpLine: null }),
+  jumpToPdf: (page, y) => set({ pendingPdfJump: { page, y } }),
+  clearPdfJump: () => set({ pendingPdfJump: null }),
   markDirty: (file) =>
     set((state) => {
       const newDirty = new Set(state.dirtyFiles)

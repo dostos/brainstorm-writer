@@ -39,6 +39,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const markDirty = useEditorStore((s) => s.markDirty)
   const markClean = useEditorStore((s) => s.markClean)
   const dirtyFiles = useEditorStore((s) => s.dirtyFiles)
+  const jumpToPdf = useEditorStore((s) => s.jumpToPdf)
   const fileContents = useRef<Record<string, string>>({})
 
   // Keep a ref to activeFile so update listener can access it without stale closures
@@ -218,6 +219,30 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [handleSave])
+
+  // Cmd+click: forward SyncTeX — jump from editor line to PDF position
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const handler = async (e: MouseEvent) => {
+      if (!e.metaKey) return
+      const view = editorViewRef.current
+      const file = activeFileRef.current
+      if (!view || !file) return
+      // Get line number at click position
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+      if (pos === null) return
+      const lineNum = view.state.doc.lineAt(pos).number
+      try {
+        const result = await window.electronAPI.synctexForward(file, lineNum)
+        if (result) {
+          jumpToPdf(result.page, result.y)
+        }
+      } catch { /* synctex not available */ }
+    }
+    container.addEventListener('click', handler)
+    return () => container.removeEventListener('click', handler)
+  }, [jumpToPdf])
 
   if (openFiles.length === 0) {
     return (

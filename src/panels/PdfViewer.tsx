@@ -76,6 +76,8 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const { projectPath } = useProjectStore()
   const { openFile, setActiveFile } = useEditorStore()
+  const pendingPdfJump = useEditorStore((s) => s.pendingPdfJump)
+  const clearPdfJump = useEditorStore((s) => s.clearPdfJump)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const singlePageRef = useRef<HTMLDivElement>(null)
@@ -482,6 +484,36 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
       container.removeEventListener('wheel', onWheel)
     }
   }, [adjustScale])
+
+  // Forward SyncTeX: scroll PDF to the position indicated by pendingPdfJump
+  useEffect(() => {
+    if (!pendingPdfJump || !scrollContainerRef.current) return
+    const { page, y } = pendingPdfJump
+    clearPdfJump()
+
+    if (continuousMode) {
+      // In continuous mode, find the page container and scroll to it + y offset
+      const container = pageContainerRefs.current.get(page)
+      if (container && scrollContainerRef.current) {
+        const scrollEl = scrollContainerRef.current
+        const containerTop = container.offsetTop
+        const pageHeight = container.offsetHeight || (pageDimensionsRef.current.get(page)?.height ?? 0) * effectiveScaleRef.current
+        // y is in PDF points at scale=1; convert to scaled pixels and add container top
+        const scaledY = y * effectiveScaleRef.current
+        const targetScrollTop = containerTop + Math.min(scaledY, pageHeight) - scrollEl.clientHeight / 2
+        scrollEl.scrollTop = Math.max(0, targetScrollTop)
+      }
+    } else {
+      // In single-page mode, switch to the target page and scroll within the page
+      setCurrentPage(page)
+      requestAnimationFrame(() => {
+        if (singlePageRef.current && scrollContainerRef.current) {
+          const scaledY = y * effectiveScaleRef.current
+          scrollContainerRef.current.scrollTop = Math.max(0, scaledY - scrollContainerRef.current.clientHeight / 2)
+        }
+      })
+    }
+  }, [pendingPdfJump, clearPdfJump, continuousMode])
 
   // Watch for PDF changes
   useEffect(() => {

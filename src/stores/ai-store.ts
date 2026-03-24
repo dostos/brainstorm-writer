@@ -7,21 +7,30 @@ interface AiResult {
   error?: string
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 interface AiState {
   results: Record<string, AiResult>
   isLoading: boolean
   selectedProviders: string[]
+  conversationHistory: ConversationMessage[]
   startRequest: (providers: string[]) => void
   appendChunk: (provider: string, chunk: string) => void
   finishProvider: (provider: string, error?: string) => void
   clearResults: () => void
   setSelectedProviders: (providers: string[]) => void
+  addToHistory: (role: 'user' | 'assistant', content: string) => void
+  clearHistory: () => void
 }
 
 export const useAiStore = create<AiState>()((set) => ({
   results: {},
   isLoading: false,
   selectedProviders: ['claude', 'openai', 'gemini'],
+  conversationHistory: [],
   startRequest: (providers) =>
     set({
       isLoading: true,
@@ -45,4 +54,9 @@ export const useAiStore = create<AiState>()((set) => ({
     }),
   clearResults: () => set({ results: {}, isLoading: false }),
   setSelectedProviders: (providers) => set({ selectedProviders: providers }),
+  addToHistory: (role, content) =>
+    set((state) => ({
+      conversationHistory: [...state.conversationHistory, { role, content }],
+    })),
+  clearHistory: () => set({ conversationHistory: [] }),
 }))
