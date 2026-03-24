@@ -122,14 +122,25 @@ export class AiProviderManager {
   ): Promise<void> {
     return new Promise((resolve) => {
       const fullPrompt = `${messages.system}\n\n${messages.user}`
-      let args: string[]
 
+      // Find the actual CLI path to avoid shell alias issues
+      const cliPath = whichCmd(cliName)
+      if (!cliPath) {
+        window.webContents.send('ai:stream', {
+          provider: providerId, type: 'error',
+          error: `CLI not found: ${cliName}`,
+        })
+        resolve()
+        return
+      }
+
+      let args: string[]
       if (cliName === 'claude') {
-        // claude -p "prompt" --output-format text
-        args = ['-p', fullPrompt, '--output-format', 'text']
+        // Use stdin via pipe: echo prompt | claude -p - --output-format text
+        args = ['-p', '-', '--output-format', 'text']
       } else if (cliName === 'gemini') {
-        // gemini -p "prompt"
-        args = ['-p', fullPrompt]
+        // gemini reads from stdin when no -p arg, but let's use -p with stdin
+        args = ['-p', '-']
       } else {
         window.webContents.send('ai:stream', {
           provider: providerId, type: 'error',
@@ -139,10 +150,14 @@ export class AiProviderManager {
         return
       }
 
-      const proc = spawn(cliName, args, {
-        shell: true,
-        env: { ...process.env, TERM: 'dumb' },
+      const proc = spawn(cliPath, args, {
+        env: { ...process.env, TERM: 'dumb', PATH: process.env.PATH },
+        stdio: ['pipe', 'pipe', 'pipe'],
       })
+
+      // Write prompt to stdin and close
+      proc.stdin?.write(fullPrompt)
+      proc.stdin?.end()
       this.childProcesses.set(providerId, proc)
 
       controller.signal.addEventListener('abort', () => {
