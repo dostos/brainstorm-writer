@@ -37,18 +37,31 @@ export function parseAiResponse(text: string): {
 export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { selection } = useEditorStore()
   const replaceSelection = useEditorStore((s) => s.replaceSelection)
-  const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
+  const { results, isLoading, selectedProviders, conversationHistory, startRequest, appendChunk, finishProvider, setSelectedProviders, addToHistory, clearHistory } = useAiStore()
   const { systemPrompt, contextScope, models, contextTemplate, providerModes } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
   const [collapsedSections, setCollapsedSections] = useState<Record<string, { comments?: boolean; suggestions?: boolean }>>({})
   const lastPromptRef = useRef<string>('')
 
+  // Track which provider was first to finish (to add its response to history)
+  const firstDoneRef = useRef<string | null>(null)
+
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
   // Use refs to avoid re-registering the listener on every render
   useEffect(() => {
+    firstDoneRef.current = null
     const cleanup = window.electronAPI.onAiStream((data) => {
       if (data.type === 'done') {
-        useAiStore.getState().finishProvider(data.provider)
+        const store = useAiStore.getState()
+        // Add the first provider's response to conversation history
+        if (firstDoneRef.current === null) {
+          firstDoneRef.current = data.provider
+          const providerResult = store.results[data.provider]
+          if (providerResult) {
+            store.addToHistory('assistant', providerResult.text)
+          }
+        }
+        store.finishProvider(data.provider)
       } else if (data.type === 'error') {
         useAiStore.getState().finishProvider(data.provider, data.error)
       } else if (data.type === 'delta') {
@@ -59,10 +72,14 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   }, [])
 
   const handleSend = useCallback(async (userPrompt: string) => {
-    if (!selection) return
-
     lastPromptRef.current = userPrompt
     startRequest(selectedProviders)
+
+    // Add the user prompt to conversation history
+    addToHistory('user', userPrompt)
+
+    // Snapshot history before this turn (does not include the message we just added)
+    const history = useAiStore.getState().conversationHistory.slice(0, -1)
 
     let context = ''
     const { activeFile, openFiles } = useEditorStore.getState()
@@ -98,10 +115,11 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
         providers: selectedProviders,
         systemPrompt,
         context: formattedContext,
-        selectedText: selection.text,
+        selectedText: selection?.text ?? '',
         userPrompt,
         models,
         providerModes,
+        history,
       })
     } catch (err: any) {
       // If the IPC call itself fails, mark all providers as done with error
@@ -109,7 +127,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
         useAiStore.getState().finishProvider(p, err.message || 'Request failed')
       }
     }
-  }, [selection, selectedProviders, systemPrompt, contextScope, contextTemplate, models, startRequest])
+  }, [selection, selectedProviders, systemPrompt, contextScope, contextTemplate, models, startRequest, addToHistory])
 
   const handleApply = useCallback((text: string) => {
     replaceSelection(text)
@@ -130,16 +148,18 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
       <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>AI Assistant</div>
 
       {/* Selected text display */}
-      {selection ? (
-        <div style={{ background: '#252540', borderRadius: 6, padding: 8, fontSize: 11 }}>
-          <div style={{ color: '#6c9', fontSize: 10, marginBottom: 4 }}>Selected text:</div>
-          <div style={{ color: '#aaa', fontStyle: 'italic', maxHeight: 80, overflow: 'auto' }}>
-            "{selection.text.length > 200 ? selection.text.slice(0, 200) + '...' : selection.text}"
-          </div>
-        </div>
-      ) : (
-        <div style={{ color: '#666', fontSize: 12 }}>Select text in the editor or PDF to get started</div>
-      )}
+      <div style={{ background: '#252540', borderRadius: 6, padding: 8, fontSize: 11 }}>
+        {selection ? (
+          <>
+            <div style={{ color: '#6c9', fontSize: 10, marginBottom: 4 }}>Selected text:</div>
+            <div style={{ color: '#aaa', fontStyle: 'italic', maxHeight: 80, overflow: 'auto' }}>
+              "{selection.text.length > 200 ? selection.text.slice(0, 200) + '...' : selection.text}"
+            </div>
+          </>
+        ) : (
+          <div style={{ color: '#666', fontSize: 11 }}>No selection — using document context</div>
+        )}
+      </div>
 
       {/* Provider selection */}
       <div style={{ display: 'flex', gap: 4 }}>
@@ -152,6 +172,21 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
           />
         ))}
       </div>
+
+      {/* Conversation history indicator + clear button */}
+      {conversationHistory.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ color: '#666', fontSize: 11 }}>
+            {Math.floor(conversationHistory.length / 2)} turn{conversationHistory.length > 2 ? 's' : ''} in conversation
+          </div>
+          <button
+            onClick={clearHistory}
+            style={{ background: 'transparent', color: '#888', border: '1px solid #444', padding: '2px 8px', borderRadius: 3, fontSize: 11, cursor: 'pointer' }}
+          >
+            Clear conversation
+          </button>
+        </div>
+      )}
 
       {/* Prompt input */}
       <PromptInput onSubmit={handleSend} disabled={isLoading} />
@@ -187,7 +222,6 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
                     if (!userPrompt) return
                     const { selection: currentSelection, activeFile, openFiles } = useEditorStore.getState()
                     const { systemPrompt: sp, contextScope: cs, models: m, contextTemplate: ct, providerModes: pm } = useSettingsStore.getState()
-                    if (!currentSelection) return
                     startRequest([provider])
                     let context = ''
                     if (cs === 'section' && activeFile) {
@@ -207,15 +241,17 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
                       .replace('{{authors}}', extractMetadata(context, 'author'))
                       .replace('{{section}}', activeFile?.split('/').pop() || '')
                     if (context) formattedContext += '\n\n' + context
+                    const retryHistory = useAiStore.getState().conversationHistory
                     try {
                       await window.electronAPI.aiRequest({
                         providers: [provider],
                         systemPrompt: sp,
                         context: formattedContext,
-                        selectedText: currentSelection.text,
+                        selectedText: currentSelection?.text ?? '',
                         userPrompt,
                         models: m,
                         providerModes: pm,
+                        history: retryHistory,
                       })
                     } catch (err: any) {
                       useAiStore.getState().finishProvider(provider, err.message || 'Request failed')
