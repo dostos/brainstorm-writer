@@ -58,7 +58,6 @@ function TreeItem({
           if (node.isDirectory) {
             toggleDir(node.path)
           } else {
-            console.log('[FileTree] click:', node.path)
             onFileClick(node.path)
           }
         }}

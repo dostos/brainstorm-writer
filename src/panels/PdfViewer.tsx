@@ -132,12 +132,10 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     const synctexPath = pdfPath.replace(/\.pdf$/, '.synctex.gz')
     try {
       await window.electronAPI.parseSynctex(synctexPath)
-      console.log('[PdfViewer] SyncTeX parsed successfully')
     } catch {
       // SyncTeX not found — auto-build once to generate it
       if (projectPath && !hasTriedAutoBuild.current) {
         hasTriedAutoBuild.current = true
-        console.log('[PdfViewer] No SyncTeX found, auto-building once...')
         try {
           await window.electronAPI.buildLatex(projectPath)
           // After build, try parsing again
@@ -375,9 +373,7 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     const x = (e.clientX - rect.left) / effectiveScale
     const y = (e.clientY - rect.top) / effectiveScale
 
-    console.log('[PdfViewer] double-click inverse search:', { pageNum, x: Math.round(x), y: Math.round(y), scale: effectiveScale })
     const synctexResult = await window.electronAPI.synctexInverse(pageNum, x, y)
-    console.log('[PdfViewer] synctexInverse result:', synctexResult)
     if (synctexResult) {
       openFile(synctexResult.file)
       setActiveFile(synctexResult.file)

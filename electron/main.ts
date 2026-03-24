@@ -253,11 +253,6 @@ app.whenReady().then(() => {
 
   ipcMain.handle('synctex:parse', async (_e, synctexPath: string) => {
     synctexData = await synctexParser.parse(synctexPath)
-    console.log('[synctex:parse] parsed:', synctexPath, 'entries:', synctexData.entries.length, 'files:', synctexData.files.length, 'pages:', new Set(synctexData.entries.map(e => e.page)).size)
-    if (synctexData.entries.length > 0) {
-      const sample = synctexData.entries[0]
-      console.log('[synctex:parse] sample entry:', JSON.stringify(sample))
-    }
     return synctexData
   })
 
@@ -267,13 +262,8 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('synctex:inverse', async (_e, page: number, x: number, y: number) => {
-    if (!synctexData) {
-      console.log('[synctex:inverse] no synctexData loaded')
-      return null
-    }
-    console.log('[synctex:inverse] searching page:', page, 'x:', Math.round(x), 'y:', Math.round(y), 'entries on page:', synctexData.entries.filter(e => e.page === page).length)
+    if (!synctexData) return null
     const result = synctexParser.inverseSearch(synctexData, page, x, y)
-    console.log('[synctex:inverse] result:', result)
     return result
   })
 })
