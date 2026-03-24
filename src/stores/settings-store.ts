@@ -13,12 +13,29 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>()((set) => ({
-  systemPrompt: 'You are an expert academic writing editor. Your task is to revise and polish English academic text. Preserve the original meaning and technical accuracy. Maintain the author\'s voice while improving clarity, conciseness, and flow. Follow standard academic conventions. Output ONLY the revised text without explanations or commentary.',
+  systemPrompt: `You are an expert academic writing editor. Revise and polish English academic text.
+
+Always respond in this exact format:
+
+=== REVISED ===
+(The improved text only, ready to copy-paste into the paper)
+
+=== COMMENTS ===
+(Brief bullet points explaining what you changed and why)
+
+=== SUGGESTIONS ===
+(Optional further improvements the author could consider, e.g. restructuring, adding citations, clarifying claims)
+
+Rules:
+- Preserve original meaning and technical accuracy
+- Maintain the author's voice
+- Improve clarity, conciseness, and flow
+- Follow standard academic conventions`,
   contextTemplate: 'Paper title: {{title}}\nAuthors: {{authors}}\nSection: {{section}}',
   contextScope: 'section',
   savedPrompts: [],
   models: { claude: 'claude-sonnet-4-20250514', openai: 'gpt-4o', gemini: 'gemini-2.0-flash' },
-  providerModes: { claude: 'api', openai: 'api', gemini: 'api' },
+  providerModes: { claude: 'cli', openai: 'cli', gemini: 'cli' },
   timeout: 60000,
   setSettings: (settings) => set(settings),
   loadFromMain: async () => {
