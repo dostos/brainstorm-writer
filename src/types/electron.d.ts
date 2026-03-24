@@ -20,7 +20,7 @@ export interface ElectronAPI {
   // Settings
   getSettings: () => Promise<any>
   setSettings: (settings: any) => Promise<void>
-  getApiKeys: () => Promise<any>
+  hasApiKeys: () => Promise<Record<string, boolean>>
   setApiKey: (provider: string, key: string) => Promise<void>
 }
 

@@ -12,6 +12,14 @@ const synctexParser = new SynctexParser()
 let synctexData: SynctexData | null = null
 
 let mainWindow: BrowserWindow | null = null
+let currentProjectPath: string | null = null
+
+function isPathInsideProject(filePath: string): boolean {
+  if (!currentProjectPath) return false
+  const resolved = path.resolve(filePath)
+  const projectResolved = path.resolve(currentProjectPath)
+  return resolved.startsWith(projectResolved + path.sep) || resolved === projectResolved
+}
 
 function createWindow() {
   // Restore last window bounds
@@ -47,13 +55,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('settings:get', () => settingsManager.getAll())
   ipcMain.handle('settings:set', (_e, settings) => settingsManager.set(settings))
-  ipcMain.handle('settings:get-keys', () => settingsManager.getApiKeys())
+  ipcMain.handle('settings:get-keys', () => {
+    const keys = settingsManager.getApiKeys()
+    return {
+      claude: Boolean(keys.claude),
+      openai: Boolean(keys.openai),
+      gemini: Boolean(keys.gemini),
+    }
+  })
   ipcMain.handle('settings:set-key', (_e, provider, key) => settingsManager.setApiKey(provider, key))
 
   ipcMain.handle('file:open-project', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return null
     const projectPath = result.filePaths[0]
+    currentProjectPath = projectPath
     const tree = await fileManager.scanProject(projectPath)
     settingsManager.setLastProject(projectPath)
     return { projectPath, tree }
@@ -64,6 +80,7 @@ app.whenReady().then(() => {
     if (!lastPath) return null
     try {
       const tree = await fileManager.scanProject(lastPath)
+      currentProjectPath = lastPath
       return { projectPath: lastPath, tree }
     } catch {
       return null
@@ -72,9 +89,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle('file:find-pdfs', async (_e, dirPath: string) => fileManager.findPdfs(dirPath))
   ipcMain.handle('file:search-tex', async (_e, dirPath: string, searchText: string) => fileManager.searchInTexFiles(dirPath, searchText))
-  ipcMain.handle('file:read', async (_e, filePath: string) => fileManager.readFile(filePath))
-  ipcMain.handle('file:read-buffer', async (_e, filePath: string) => fileManager.readFileBuffer(filePath))
-  ipcMain.handle('file:write', async (_e, filePath: string, content: string) => fileManager.writeFile(filePath, content))
+  ipcMain.handle('file:read', async (_e, filePath: string) => {
+    if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
+    return fileManager.readFile(filePath)
+  })
+  ipcMain.handle('file:read-buffer', async (_e, filePath: string) => {
+    if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
+    return fileManager.readFileBuffer(filePath)
+  })
+  ipcMain.handle('file:write', async (_e, filePath: string, content: string) => {
+    if (!isPathInsideProject(filePath)) throw new Error('Access denied: path is outside project directory')
+    return fileManager.writeFile(filePath, content)
+  })
 
   ipcMain.handle('file:watch', async (_e, projectPath: string) => {
     fileManager.watch(projectPath, (filePath) => {

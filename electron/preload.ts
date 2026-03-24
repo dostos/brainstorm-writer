@@ -40,6 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('settings:set', settings),
-  getApiKeys: () => ipcRenderer.invoke('settings:get-keys'),
+  hasApiKeys: () => ipcRenderer.invoke('settings:get-keys'),
   setApiKey: (provider: string, key: string) => ipcRenderer.invoke('settings:set-key', provider, key),
 })

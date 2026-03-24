@@ -10,16 +10,23 @@ const PROVIDERS = [
 
 export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
   const settings = useSettingsStore()
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({})
+  const [pendingKeys, setPendingKeys] = useState<Record<string, string>>({})
   const [newPrompt, setNewPrompt] = useState('')
 
   useEffect(() => {
-    window.electronAPI.getApiKeys().then((keys: Record<string, string>) => setApiKeys(keys || {}))
+    window.electronAPI.hasApiKeys().then((status) => setKeyStatus(status || {}))
   }, [])
 
   const saveApiKey = useCallback(async (provider: string, key: string) => {
     await window.electronAPI.setApiKey(provider, key)
-    setApiKeys((prev) => ({ ...prev, [provider]: key }))
+    setKeyStatus((prev) => ({ ...prev, [provider]: Boolean(key) }))
+    setPendingKeys((prev) => ({ ...prev, [provider]: '' }))
+  }, [])
+
+  const clearApiKey = useCallback(async (provider: string) => {
+    await window.electronAPI.setApiKey(provider, '')
+    setKeyStatus((prev) => ({ ...prev, [provider]: false }))
   }, [])
 
   const saveSettings = useCallback(async (partial: Record<string, unknown>) => {
@@ -98,13 +105,30 @@ export const SettingsPanel: React.FC<IDockviewPanelProps> = () => {
                   <label style={{ ...labelStyle, marginBottom: 2 }}>
                     API Key <span style={{ color: '#555' }}>({p.envVar})</span>
                   </label>
-                  <input
-                    type="password"
-                    value={apiKeys[p.id] || ''}
-                    onChange={(e) => saveApiKey(p.id, e.target.value)}
-                    placeholder={`Enter key or set ${p.envVar}`}
-                    style={{ ...inputStyle, fontSize: 11 }}
-                  />
+                  {keyStatus[p.id] ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#6c9', fontSize: 11, flex: 1 }}>Key configured ✓</span>
+                      <button
+                        onClick={() => clearApiKey(p.id)}
+                        style={{
+                          background: 'transparent', color: '#a66', border: '1px solid #644',
+                          padding: '2px 8px', borderRadius: 3, fontSize: 10, cursor: 'pointer',
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      type="password"
+                      value={pendingKeys[p.id] || ''}
+                      onChange={(e) => setPendingKeys((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onBlur={(e) => { if (e.target.value) saveApiKey(p.id, e.target.value) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLInputElement).value) saveApiKey(p.id, (e.target as HTMLInputElement).value) }}
+                      placeholder={`Enter key or set ${p.envVar}`}
+                      style={{ ...inputStyle, fontSize: 11 }}
+                    />
+                  )}
                 </div>
               )}
               {mode === 'cli' && (

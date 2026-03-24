@@ -1,6 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { spawn, type ChildProcess } from 'child_process'
-import { execSync } from 'child_process'
+import { spawn, execFileSync, type ChildProcess } from 'child_process'
 
 export interface AiRequest {
   providers: string[]
@@ -20,7 +19,7 @@ export interface AiMessages {
 // Check if a CLI command exists
 function whichCmd(cmd: string): string | null {
   try {
-    return execSync(`which ${cmd}`, { encoding: 'utf-8' }).trim() || null
+    return execFileSync('which', [cmd], { encoding: 'utf-8' }).trim() || null
   } catch {
     return null
   }
