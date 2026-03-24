@@ -13,7 +13,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>()((set) => ({
-  systemPrompt: 'You are an academic writing assistant.',
+  systemPrompt: 'You are an expert academic writing editor. Your task is to revise and polish English academic text. Preserve the original meaning and technical accuracy. Maintain the author\'s voice while improving clarity, conciseness, and flow. Follow standard academic conventions. Output ONLY the revised text without explanations or commentary.',
   contextTemplate: 'Paper title: {{title}}\nAuthors: {{authors}}\nSection: {{section}}',
   contextScope: 'section',
   savedPrompts: [],

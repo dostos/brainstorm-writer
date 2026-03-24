@@ -26,11 +26,18 @@ const ENV_KEY_MAP: Record<string, string> = {
 
 const DEFAULTS: Settings = {
   systemPrompt:
-    'You are an academic writing assistant. Improve the given text while preserving its meaning and technical accuracy.',
+    'You are an expert academic writing editor. Your task is to revise and polish English academic text. Preserve the original meaning and technical accuracy. Maintain the author\'s voice while improving clarity, conciseness, and flow. Follow standard academic conventions. Output ONLY the revised text without explanations or commentary.',
   contextTemplate:
     'Paper title: {{title}}\nAuthors: {{authors}}\nSection: {{section}}',
   contextScope: 'section',
-  savedPrompts: [],
+  savedPrompts: [
+    'Improve clarity and conciseness',
+    'Fix grammar and punctuation',
+    'Make more formal and academic',
+    'Strengthen the argument with smoother transitions',
+    'Simplify complex sentences while keeping technical accuracy',
+    'Rewrite to be more engaging for the reader',
+  ],
   models: {
     claude: 'claude-sonnet-4-20250514',
     openai: 'gpt-4o',
@@ -105,6 +112,14 @@ export class SettingsManager {
       return safeStorage.encryptString(value).toString('base64')
     }
     return value
+  }
+
+  getWindowBounds(): { width: number; height: number; x?: number; y?: number } {
+    return this.store.get('windowBounds') || { width: 1400, height: 900 }
+  }
+
+  setWindowBounds(bounds: { width: number; height: number; x: number; y: number }): void {
+    this.store.set('windowBounds', bounds)
   }
 
   getLastProject(): string | null {

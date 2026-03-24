@@ -14,15 +14,26 @@ let synctexData: SynctexData | null = null
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  // Restore last window bounds
+  const bounds = settingsManager.getWindowBounds()
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    ...bounds,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+
+  // Save window bounds on resize/move
+  const saveBounds = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      settingsManager.setWindowBounds(mainWindow.getBounds())
+    }
+  }
+  mainWindow.on('resize', saveBounds)
+  mainWindow.on('move', saveBounds)
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
