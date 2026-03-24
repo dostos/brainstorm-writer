@@ -31,21 +31,8 @@ html, body, #root {
   height: 100%;
 }
 
-/* PDF text layer - enables text selection over canvas */
-.pdf-text-layer {
-  opacity: 0.25;
-  line-height: 1.0;
-}
-
-.pdf-text-layer span {
-  color: transparent;
-  position: absolute;
-  white-space: pre;
-  transform-origin: 0% 0%;
-  cursor: text;
-}
-
-.pdf-text-layer ::selection {
+/* PDF text layer overrides - make selection highlight visible on dark background */
+.textLayer ::selection {
   background: rgba(100, 200, 150, 0.4);
 }
 

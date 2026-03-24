@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { TextLayer } from 'pdfjs-dist'
+import 'pdfjs-dist/web/pdf_viewer.css'
 import { useProjectStore } from '../stores/project-store'
 import { useEditorStore } from '../stores/editor-store'
 
@@ -35,17 +36,17 @@ async function renderPage(
   const ctx = canvas.getContext('2d')!
   await page.render({ canvasContext: ctx, viewport }).promise
 
-  // Text layer for selection
+  // Text layer for selection — uses pdfjs official .textLayer CSS class
   const textContent = await page.getTextContent()
   const textLayerDiv = document.createElement('div')
+  textLayerDiv.className = 'textLayer'
   textLayerDiv.style.position = 'absolute'
   textLayerDiv.style.left = '0'
   textLayerDiv.style.top = '0'
   textLayerDiv.style.width = `${viewport.width}px`
   textLayerDiv.style.height = `${viewport.height}px`
-  textLayerDiv.style.overflow = 'hidden'
-  textLayerDiv.style.lineHeight = '1.0'
-  textLayerDiv.className = 'pdf-text-layer'
+  // Set CSS custom properties that pdfjs TextLayer expects
+  textLayerDiv.style.setProperty('--total-scale-factor', String(scale))
   container.appendChild(textLayerDiv)
 
   const textLayer = new TextLayer({
