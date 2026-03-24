@@ -41,6 +41,29 @@ export class FileManager {
     return fs.readFileSync(filePath)
   }
 
+  findProjectPdf(projectPath: string): { path: string; buffer: Buffer } | null {
+    const names = ['main.pdf', 'output.pdf', 'paper.pdf']
+    const dirs = ['', 'output', 'build', 'out', '_build']
+    for (const dir of dirs) {
+      for (const name of names) {
+        const pdfPath = dir ? path.join(projectPath, dir, name) : path.join(projectPath, name)
+        try {
+          const buffer = fs.readFileSync(pdfPath)
+          return { path: pdfPath, buffer }
+        } catch { /* not found, try next */ }
+      }
+    }
+    // Fallback: recursive .pdf search
+    const found = this.findPdfs(projectPath)
+    if (found.length > 0) {
+      try {
+        const buffer = fs.readFileSync(found[0])
+        return { path: found[0], buffer }
+      } catch { /* unreadable */ }
+    }
+    return null
+  }
+
   findPdfs(dirPath: string, maxDepth = 2): string[] {
     const results: string[] = []
     this.findPdfsRecursive(dirPath, results, 0, maxDepth)
