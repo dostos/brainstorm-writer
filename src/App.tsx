@@ -1,20 +1,26 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useRef } from 'react'
 import { DockviewReact, DockviewReadyEvent, IDockviewPanelProps } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { FileTree } from './panels/FileTree'
 import { Editor } from './panels/Editor'
 import { PdfViewer } from './panels/PdfViewer'
 import { AiPanel } from './panels/AiPanel'
+import { SettingsPanel } from './components/SettingsPanel'
 
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   fileTree: FileTree,
   editor: Editor,
   pdfViewer: PdfViewer,
   aiPanel: AiPanel,
+  settingsPanel: SettingsPanel,
 }
 
 export default function App() {
+  const dockviewApiRef = useRef<any>(null)
+
   const onReady = useCallback((event: DockviewReadyEvent) => {
+    dockviewApiRef.current = event.api
+
     const fileTreePanel = event.api.addPanel({
       id: 'fileTree',
       component: 'fileTree',
@@ -47,12 +53,35 @@ export default function App() {
   }, [])
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <DockviewReact
-        className="dockview-theme-dark"
-        onReady={onReady}
-        components={components}
-      />
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: 32, background: '#16162a', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 12px', borderBottom: '1px solid #333' }}>
+        <button
+          onClick={() => {
+            // Add settings panel if not already open
+            try {
+              dockviewApiRef.current?.addPanel({
+                id: 'settings',
+                component: 'settingsPanel',
+                title: 'Settings',
+                position: { direction: 'right' },
+              })
+            } catch {
+              // Panel may already be open; focus it instead
+              dockviewApiRef.current?.getPanel('settings')?.focus()
+            }
+          }}
+          style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 16 }}
+        >
+          ⚙
+        </button>
+      </div>
+      <div style={{ flex: 1 }}>
+        <DockviewReact
+          className="dockview-theme-dark"
+          onReady={onReady}
+          components={components}
+        />
+      </div>
     </div>
   )
 }
