@@ -41,6 +41,28 @@ export class FileManager {
     return fs.readFileSync(filePath)
   }
 
+  findPdfs(dirPath: string, maxDepth = 2): string[] {
+    const results: string[] = []
+    this.findPdfsRecursive(dirPath, results, 0, maxDepth)
+    return results
+  }
+
+  private findPdfsRecursive(dirPath: string, results: string[], depth: number, maxDepth: number): void {
+    if (depth > maxDepth) return
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        const fullPath = path.join(dirPath, entry.name)
+        if (entry.isFile() && entry.name.endsWith('.pdf')) {
+          results.push(fullPath)
+        } else if (entry.isDirectory() && depth < maxDepth) {
+          this.findPdfsRecursive(fullPath, results, depth + 1, maxDepth)
+        }
+      }
+    } catch { /* permission error etc */ }
+  }
+
   fileExists(filePath: string): boolean {
     return fs.existsSync(filePath)
   }

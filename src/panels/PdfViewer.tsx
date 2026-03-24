@@ -98,24 +98,41 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => observer.disconnect()
   }, [pdfDoc, computeFitScale, manualScale])
 
-  // Load PDF
+  // Load PDF — search root and common subdirectories
   const loadPdf = useCallback(async () => {
     if (!projectPath) return
-    const candidates = ['main.pdf', 'output.pdf', 'paper.pdf']
-    for (const name of candidates) {
-      const pdfPath = `${projectPath}/${name}`
-      try {
-        const buffer = await window.electronAPI.readFileBuffer(pdfPath)
+    const names = ['main.pdf', 'output.pdf', 'paper.pdf']
+    const dirs = ['', 'output', 'build', 'out', '_build']
+    for (const dir of dirs) {
+      for (const name of names) {
+        const pdfPath = dir ? `${projectPath}/${dir}/${name}` : `${projectPath}/${name}`
+        try {
+          const buffer = await window.electronAPI.readFileBuffer(pdfPath)
+          if (buffer) {
+            const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise
+            setPdfDoc(doc)
+            setTotalPages(doc.numPages)
+            setCurrentPage(1)
+            setManualScale(null)
+            return
+          }
+        } catch { /* not found, try next */ }
+      }
+    }
+    // Fallback: find any .pdf in root or output/
+    try {
+      const tree = await window.electronAPI.findPdfs(projectPath)
+      if (tree && tree.length > 0) {
+        const buffer = await window.electronAPI.readFileBuffer(tree[0])
         if (buffer) {
           const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise
           setPdfDoc(doc)
           setTotalPages(doc.numPages)
           setCurrentPage(1)
-          setManualScale(null) // reset to auto-fit
-          return
+          setManualScale(null)
         }
-      } catch { /* not found */ }
-    }
+      }
+    } catch { /* no findPdfs handler or no PDFs */ }
   }, [projectPath])
 
   useEffect(() => {
