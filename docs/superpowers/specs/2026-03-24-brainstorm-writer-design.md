@@ -81,8 +81,8 @@ Default 3-column layout using dockview. All panels are draggable, splittable, an
 
 - LaTeX compilation produces `.synctex.gz`
 - Main Process parses it into a bidirectional mapping table
-- **Forward search**: PDF click/selection → editor file:line (used when selecting text in PDF)
-- **Inverse search**: editor cursor position → PDF page:coordinates (used for preview sync)
+- **Inverse search** (SyncTeX terminology): PDF click/selection → editor file:line (used when selecting text in PDF)
+- **Forward search** (SyncTeX terminology): editor cursor position → PDF page:coordinates (used for preview sync)
 - Parsed via synctex-js or custom parser for the gzipped format
 
 ### AI Context Assembly
@@ -151,7 +151,7 @@ Key IPC channels between Main and Renderer:
 'file:open-project' → opens folder picker, returns file tree
 'file:read'         → reads file content
 'file:write'        → saves file content
-'file:watch'        → watches for external changes
+'file:watch'        → watches for external changes (including compiled PDF for auto-reload)
 
 // SyncTeX
 'synctex:parse'     → parses .synctex.gz for current project
@@ -168,6 +168,16 @@ Key IPC channels between Main and Renderer:
 'settings:set'      → writes settings
 'settings:get-keys' → reads API keys (decrypted)
 ```
+
+## Model Selection
+
+Each AI provider supports selecting a specific model (e.g., `claude-sonnet-4-20250514` vs `claude-opus-4-20250514`, `gpt-4o` vs `gpt-4o-mini`). The Settings panel exposes a model dropdown per provider populated from a hardcoded list. Users can also type a custom model ID.
+
+## Error Handling (AI Requests)
+
+- **Rate limits / network errors**: Show error inline in the provider's result card with a "Retry" button. Other providers' results are unaffected.
+- **Partial stream failure**: Display whatever was received with an error indicator. User can retry or dismiss.
+- **Timeout**: 60-second default timeout per request, configurable in settings.
 
 ## Out of Scope (v1)
 
