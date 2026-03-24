@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
 import { useEditorStore } from '../stores/editor-store'
 import { useAiStore } from '../stores/ai-store'
@@ -13,6 +13,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const { results, isLoading, selectedProviders, startRequest, appendChunk, finishProvider, setSelectedProviders } = useAiStore()
   const { systemPrompt, contextScope, models, contextTemplate, providerModes } = useSettingsStore()
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
+  const lastPromptRef = useRef<string>('')
 
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
   // Use refs to avoid re-registering the listener on every render
@@ -32,6 +33,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const handleSend = useCallback(async (userPrompt: string) => {
     if (!selection) return
 
+    lastPromptRef.current = userPrompt
     startRequest(selectedProviders)
 
     let context = ''
@@ -151,9 +153,45 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
               <div>
                 <div style={{ color: '#c66', fontSize: 12 }}>Error: {result.error}</div>
                 <button
-                  onClick={() => {
-                    // Retry just this provider with the last prompt
-                    // Re-send via the same handleSend mechanism
+                  onClick={async () => {
+                    const provider = result.provider
+                    const userPrompt = lastPromptRef.current
+                    if (!userPrompt) return
+                    const { selection: currentSelection, activeFile, openFiles } = useEditorStore.getState()
+                    const { systemPrompt: sp, contextScope: cs, models: m, contextTemplate: ct, providerModes: pm } = useSettingsStore.getState()
+                    if (!currentSelection) return
+                    startRequest([provider])
+                    let context = ''
+                    if (cs === 'section' && activeFile) {
+                      context = await window.electronAPI.readFile(activeFile)
+                    } else if (cs === 'full') {
+                      const parts: string[] = []
+                      for (const file of openFiles) {
+                        if (file.endsWith('.tex')) {
+                          const content = await window.electronAPI.readFile(file)
+                          parts.push(`--- ${file.split('/').pop()} ---\n${content}`)
+                        }
+                      }
+                      context = parts.join('\n\n')
+                    }
+                    let formattedContext = ct
+                      .replace('{{title}}', extractMetadata(context, 'title'))
+                      .replace('{{authors}}', extractMetadata(context, 'author'))
+                      .replace('{{section}}', activeFile?.split('/').pop() || '')
+                    if (context) formattedContext += '\n\n' + context
+                    try {
+                      await window.electronAPI.aiRequest({
+                        providers: [provider],
+                        systemPrompt: sp,
+                        context: formattedContext,
+                        selectedText: currentSelection.text,
+                        userPrompt,
+                        models: m,
+                        providerModes: pm,
+                      })
+                    } catch (err: any) {
+                      useAiStore.getState().finishProvider(provider, err.message || 'Request failed')
+                    }
                   }}
                   style={{ background: '#c66', color: '#fff', border: 'none', padding: '2px 10px', borderRadius: 3, fontSize: 11, cursor: 'pointer', marginTop: 4 }}
                 >
