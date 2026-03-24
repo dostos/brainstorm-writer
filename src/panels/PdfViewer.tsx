@@ -213,6 +213,17 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     return () => document.removeEventListener('mouseup', handler)
   }, [setSelection])
 
+  const adjustScale = useCallback((delta: number) => {
+    setManualScale((prev) => {
+      const current = prev ?? scale ?? 1.2
+      return Math.max(0.3, Math.min(5, current + delta))
+    })
+  }, [scale])
+
+  const resetFit = useCallback(() => {
+    setManualScale(null)
+  }, [])
+
   // Panning: Space+drag or middle-click drag
   useEffect(() => {
     const container = scrollContainerRef.current
@@ -295,16 +306,6 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     })
     return cleanup
   }, [loadPdf])
-
-  const adjustScale = (delta: number) => {
-    const current = manualScale ?? scale ?? 1.2
-    const newScale = Math.max(0.3, Math.min(5, current + delta))
-    setManualScale(newScale)
-  }
-
-  const resetFit = () => {
-    setManualScale(null)
-  }
 
   if (!projectPath) {
     return (
