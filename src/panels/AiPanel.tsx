@@ -18,10 +18,12 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   // Use refs to avoid re-registering the listener on every render
   useEffect(() => {
     const cleanup = window.electronAPI.onAiStream((data) => {
-      if (data.done) {
+      if (data.type === 'done') {
+        useAiStore.getState().finishProvider(data.provider)
+      } else if (data.type === 'error') {
         useAiStore.getState().finishProvider(data.provider, data.error)
-      } else {
-        useAiStore.getState().appendChunk(data.provider, data.chunk)
+      } else if (data.type === 'delta') {
+        useAiStore.getState().appendChunk(data.provider, data.text ?? '')
       }
     })
     return cleanup

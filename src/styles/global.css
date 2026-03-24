@@ -31,6 +31,24 @@ html, body, #root {
   height: 100%;
 }
 
+/* PDF text layer - enables text selection over canvas */
+.pdf-text-layer {
+  opacity: 0.25;
+  line-height: 1.0;
+}
+
+.pdf-text-layer span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+  cursor: text;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(100, 200, 150, 0.4);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

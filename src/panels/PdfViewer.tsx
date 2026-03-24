@@ -1,28 +1,103 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { IDockviewPanelProps } from 'dockview-react'
 import * as pdfjsLib from 'pdfjs-dist'
+import { TextLayer } from 'pdfjs-dist'
 import { useProjectStore } from '../stores/project-store'
 import { useEditorStore } from '../stores/editor-store'
 
-// Set worker source
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url,
 ).toString()
 
+async function renderPage(
+  doc: pdfjsLib.PDFDocumentProxy,
+  pageNum: number,
+  container: HTMLDivElement,
+  scale: number,
+) {
+  const page = await doc.getPage(pageNum)
+  const viewport = page.getViewport({ scale })
+
+  // Clear previous content
+  container.innerHTML = ''
+  container.style.width = `${viewport.width}px`
+  container.style.height = `${viewport.height}px`
+  container.style.position = 'relative'
+
+  // Canvas layer
+  const canvas = document.createElement('canvas')
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+  canvas.style.display = 'block'
+  container.appendChild(canvas)
+
+  const ctx = canvas.getContext('2d')!
+  await page.render({ canvasContext: ctx, viewport }).promise
+
+  // Text layer for selection
+  const textContent = await page.getTextContent()
+  const textLayerDiv = document.createElement('div')
+  textLayerDiv.style.position = 'absolute'
+  textLayerDiv.style.left = '0'
+  textLayerDiv.style.top = '0'
+  textLayerDiv.style.width = `${viewport.width}px`
+  textLayerDiv.style.height = `${viewport.height}px`
+  textLayerDiv.style.overflow = 'hidden'
+  textLayerDiv.style.lineHeight = '1.0'
+  textLayerDiv.className = 'pdf-text-layer'
+  container.appendChild(textLayerDiv)
+
+  const textLayer = new TextLayer({
+    textContentSource: textContent,
+    container: textLayerDiv,
+    viewport,
+  })
+  await textLayer.render()
+}
+
 export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [totalPages, setTotalPages] = useState(0)
-  const [scale, setScale] = useState(1.2)
+  const [scale, setScale] = useState<number | null>(null) // null = auto-fit
+  const [manualScale, setManualScale] = useState<number | null>(null)
   const [continuousMode, setContinuousMode] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const { projectPath } = useProjectStore()
   const { openFile, setActiveFile } = useEditorStore()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
-  const singleCanvasRef = useRef<HTMLCanvasElement>(null)
+  const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const singlePageRef = useRef<HTMLDivElement>(null)
 
-  // Find and load PDF in project via IPC (avoids file:// CSP issues)
+  // Compute auto-fit scale based on container width and first page
+  const computeFitScale = useCallback(async () => {
+    if (!pdfDoc || !scrollContainerRef.current) return null
+    const page = await pdfDoc.getPage(1)
+    const defaultViewport = page.getViewport({ scale: 1.0 })
+    const containerWidth = scrollContainerRef.current.clientWidth - 32 // padding
+    return containerWidth / defaultViewport.width
+  }, [pdfDoc])
+
+  // Determine effective scale
+  const effectiveScale = manualScale ?? scale ?? 1.2
+
+  // Auto-fit on load and resize
+  useEffect(() => {
+    if (!pdfDoc || manualScale !== null) return
+    const updateFit = async () => {
+      const fitScale = await computeFitScale()
+      if (fitScale) setScale(fitScale)
+    }
+    updateFit()
+
+    const observer = new ResizeObserver(() => updateFit())
+    if (scrollContainerRef.current) {
+      observer.observe(scrollContainerRef.current)
+    }
+    return () => observer.disconnect()
+  }, [pdfDoc, computeFitScale, manualScale])
+
+  // Load PDF
   const loadPdf = useCallback(async () => {
     if (!projectPath) return
     const candidates = ['main.pdf', 'output.pdf', 'paper.pdf']
@@ -35,9 +110,10 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
           setPdfDoc(doc)
           setTotalPages(doc.numPages)
           setCurrentPage(1)
+          setManualScale(null) // reset to auto-fit
           return
         }
-      } catch { /* not found, try next */ }
+      } catch { /* not found */ }
     }
   }, [projectPath])
 
@@ -45,54 +121,43 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     loadPdf().catch(console.error)
   }, [loadPdf])
 
-  // Render single page (page-by-page mode)
+  // Render pages (continuous mode)
   useEffect(() => {
-    if (!pdfDoc || continuousMode || !singleCanvasRef.current) return
-    pdfDoc.getPage(currentPage).then((page) => {
-      const viewport = page.getViewport({ scale })
-      const canvas = singleCanvasRef.current!
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-      const ctx = canvas.getContext('2d')!
-      page.render({ canvasContext: ctx, viewport })
-    })
-  }, [pdfDoc, currentPage, scale, continuousMode])
-
-  // Render all pages (continuous mode)
-  useEffect(() => {
-    if (!pdfDoc || !continuousMode) return
-    const renderPages = async () => {
+    if (!pdfDoc || !continuousMode || scale === null) return
+    const render = async () => {
       for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const canvas = canvasRefs.current.get(i)
-        if (!canvas) continue
-        const page = await pdfDoc.getPage(i)
-        const viewport = page.getViewport({ scale })
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        const ctx = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport }).promise
+        const container = pageContainerRefs.current.get(i)
+        if (!container) continue
+        await renderPage(pdfDoc, i, container, effectiveScale)
       }
     }
-    // Small delay to let canvases mount
-    const timer = setTimeout(() => renderPages().catch(console.error), 50)
+    const timer = setTimeout(() => render().catch(console.error), 50)
     return () => clearTimeout(timer)
-  }, [pdfDoc, scale, continuousMode, totalPages])
+  }, [pdfDoc, effectiveScale, continuousMode, totalPages, scale])
 
-  // Handle SyncTeX click
-  const handleCanvasClick = useCallback(async (page: number, e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = e.currentTarget
-    const rect = canvas.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / scale
-    const y = (e.clientY - rect.top) / scale
+  // Render single page
+  useEffect(() => {
+    if (!pdfDoc || continuousMode || !singlePageRef.current || scale === null) return
+    renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale).catch(console.error)
+  }, [pdfDoc, currentPage, effectiveScale, continuousMode, scale])
 
-    const result = await window.electronAPI.synctexInverse(page, x, y)
+  // SyncTeX click handler (on the container, not canvas directly since text layer is on top)
+  const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
+    // Only trigger on double-click to avoid interfering with text selection
+    if (e.detail < 2) return
+    const container = e.currentTarget
+    const rect = container.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / effectiveScale
+    const y = (e.clientY - rect.top) / effectiveScale
+
+    const result = await window.electronAPI.synctexInverse(pageNum, x, y)
     if (result) {
       openFile(result.file)
       setActiveFile(result.file)
     }
-  }, [scale, openFile, setActiveFile])
+  }, [effectiveScale, openFile, setActiveFile])
 
-  // Watch for PDF changes and reload
+  // Watch for PDF changes
   useEffect(() => {
     const cleanup = window.electronAPI.onFileChanged((filePath: string) => {
       if (filePath.endsWith('.pdf')) {
@@ -101,6 +166,16 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     })
     return cleanup
   }, [loadPdf])
+
+  const adjustScale = (delta: number) => {
+    const current = manualScale ?? scale ?? 1.2
+    const newScale = Math.max(0.3, Math.min(5, current + delta))
+    setManualScale(newScale)
+  }
+
+  const resetFit = () => {
+    setManualScale(null)
+  }
 
   if (!projectPath) {
     return (
@@ -114,67 +189,65 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '4px 8px', borderBottom: '1px solid #333', fontSize: 12, color: '#888',
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        padding: '4px 8px', borderBottom: '1px solid #333', fontSize: 11, color: '#888',
       }}>
         {!continuousMode && (
           <>
             <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}
-              style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>◀</button>
-            <span>Page {currentPage} / {totalPages}</span>
+              style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 12 }}>◀</button>
+            <span>{currentPage}/{totalPages}</span>
             <button onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages}
-              style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>▶</button>
-            <span style={{ margin: '0 4px' }}>|</span>
+              style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 12 }}>▶</button>
+            <span style={{ color: '#444' }}>|</span>
           </>
         )}
-        {continuousMode && <span>{totalPages} pages</span>}
-        <span style={{ margin: '0 4px' }}>|</span>
-        <button onClick={() => setScale(s => Math.max(0.5, s - 0.1))}
+        <button onClick={() => adjustScale(-0.1)}
           style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>−</button>
-        <span>{Math.round(scale * 100)}%</span>
-        <button onClick={() => setScale(s => Math.min(3, s + 0.1))}
+        <span
+          onClick={resetFit}
+          style={{ cursor: 'pointer', color: manualScale ? '#ccc' : '#6c9', minWidth: 36, textAlign: 'center' }}
+          title="Click to fit width"
+        >
+          {Math.round(effectiveScale * 100)}%
+        </span>
+        <button onClick={() => adjustScale(0.1)}
           style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>+</button>
-        <span style={{ margin: '0 4px' }}>|</span>
+        <span style={{ color: '#444' }}>|</span>
         <button
           onClick={() => setContinuousMode(!continuousMode)}
           style={{
             background: continuousMode ? '#3a3a5e' : 'none',
-            border: '1px solid #444',
-            color: '#ccc',
-            cursor: 'pointer',
-            padding: '1px 6px',
-            borderRadius: 3,
-            fontSize: 11,
+            border: '1px solid #444', color: '#ccc', cursor: 'pointer',
+            padding: '1px 6px', borderRadius: 3,
           }}
         >
-          {continuousMode ? 'Continuous' : 'Page'}
+          {continuousMode ? 'Scroll' : 'Page'}
         </button>
       </div>
 
       {/* PDF content */}
-      <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+      <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
         {continuousMode ? (
-          // Continuous scrolling: render all pages stacked
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-              <canvas
+              <div
                 key={pageNum}
                 ref={(el) => {
-                  if (el) canvasRefs.current.set(pageNum, el)
-                  else canvasRefs.current.delete(pageNum)
+                  if (el) pageContainerRefs.current.set(pageNum, el)
+                  else pageContainerRefs.current.delete(pageNum)
                 }}
-                onClick={(e) => handleCanvasClick(pageNum, e)}
-                style={{ cursor: 'crosshair', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
+                onDoubleClick={(e) => handlePageClick(pageNum, e)}
+                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', background: '#fff' }}
               />
             ))}
           </div>
         ) : (
-          // Single page mode
-          <div style={{ display: 'flex', justifyContent: 'center', minHeight: '100%' }}>
-            <canvas
-              ref={singleCanvasRef}
-              onClick={(e) => handleCanvasClick(currentPage, e)}
-              style={{ cursor: 'crosshair', display: 'block' }}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div
+              ref={singlePageRef}
+              onDoubleClick={(e) => handlePageClick(currentPage, e)}
+              style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', background: '#fff' }}
             />
           </div>
         )}
