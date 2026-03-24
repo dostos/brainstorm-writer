@@ -240,9 +240,13 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
     view.setState(newState)
 
-    // Restore scroll position for the target file
-    const savedScroll = scrollPositionsRef.current.get(file) ?? 0
-    view.scrollDOM.scrollTop = savedScroll
+    // Force CodeMirror to measure and update after state swap
+    requestAnimationFrame(() => {
+      view.requestMeasure()
+      // Restore scroll position for the target file
+      const savedScroll = scrollPositionsRef.current.get(file) ?? 0
+      view.scrollDOM.scrollTop = savedScroll
+    })
   }, [])
 
   // Track previous activeFile to know what to save when switching
