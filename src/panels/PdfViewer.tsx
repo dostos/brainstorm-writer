@@ -175,6 +175,22 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     }
   }, [effectiveScale, openFile, setActiveFile])
 
+  // Capture PDF text selection → push to editor store for AI panel
+  const { setSelection } = useEditorStore()
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const handler = () => {
+      const sel = window.getSelection()
+      const text = sel?.toString().trim()
+      if (text && text.length > 0) {
+        setSelection({ text, from: -1, to: -1 }) // from/to = -1 indicates PDF source
+      }
+    }
+    container.addEventListener('mouseup', handler)
+    return () => container.removeEventListener('mouseup', handler)
+  }, [setSelection])
+
   // Watch for PDF changes
   useEffect(() => {
     const cleanup = window.electronAPI.onFileChanged((filePath: string) => {

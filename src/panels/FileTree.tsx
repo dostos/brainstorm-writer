@@ -25,6 +25,7 @@ function toTreeData(nodes: any[]): TreeNode[] {
 
 function Node({ node, style }: NodeRendererProps<TreeNode>) {
   const icon = node.data.isDirectory ? (node.isOpen ? '📂' : '📁') : '📄'
+  const depth = node.level
   return (
     <div
       style={{
@@ -32,15 +33,19 @@ function Node({ node, style }: NodeRendererProps<TreeNode>) {
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        padding: '2px 4px',
+        paddingLeft: depth * 16 + 8,
+        paddingRight: 4,
+        paddingTop: 2,
+        paddingBottom: 2,
         cursor: 'pointer',
         fontSize: 13,
         color: node.isSelected ? '#6c9' : '#ccc',
+        background: node.isSelected ? 'rgba(102,204,153,0.1)' : 'transparent',
       }}
       onClick={() => node.isInternal ? node.toggle() : node.select()}
     >
-      <span>{icon}</span>
-      <span>{node.data.name}</span>
+      <span style={{ flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.data.name}</span>
     </div>
   )
 }
