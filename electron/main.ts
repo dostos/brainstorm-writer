@@ -1,5 +1,8 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
+import { SettingsManager } from './settings-manager'
+
+const settingsManager = new SettingsManager()
 
 let mainWindow: BrowserWindow | null = null
 
@@ -21,7 +24,14 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+
+  ipcMain.handle('settings:get', () => settingsManager.getAll())
+  ipcMain.handle('settings:set', (_e, settings) => settingsManager.set(settings))
+  ipcMain.handle('settings:get-keys', () => settingsManager.getApiKeys())
+  ipcMain.handle('settings:set-key', (_e, provider, key) => settingsManager.setApiKey(provider, key))
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
