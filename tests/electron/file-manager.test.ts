@@ -45,7 +45,7 @@ describe('FileManager', () => {
     fm.watch(tmpDir, (filePath) => changes.push(filePath))
     const target = path.join(tmpDir, 'main.tex')
     fs.writeFileSync(target, 'modified')
-    await new Promise(r => setTimeout(r, 300))
+    await new Promise(r => setTimeout(r, 650))
     expect(changes.length).toBeGreaterThanOrEqual(1)
   })
 })

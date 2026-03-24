@@ -32,6 +32,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   // Map from file path -> scroll position
   const scrollPositionsRef = useRef<Map<string, number>>(new Map())
   const [wordWrap, setWordWrap] = useState(true)
+  const [savedFlash, setSavedFlash] = useState<string | null>(null)
   const { activeFile, openFiles, setSelection, setActiveFile, closeFile } = useEditorStore()
   const pendingReplacement = useEditorStore((s) => s.pendingReplacement)
   const clearReplacement = useEditorStore((s) => s.clearReplacement)
@@ -173,6 +174,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     const content = editorViewRef.current.state.doc.toString()
     await window.electronAPI.writeFile(activeFile, content)
     markClean(activeFile)
+    setSavedFlash(activeFile)
+    setTimeout(() => setSavedFlash((prev) => (prev === activeFile ? null : prev)), 1500)
   }, [activeFile, markClean])
 
   useEffect(() => {
@@ -245,6 +248,9 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
             }}
           >
             <span>{dirtyFiles.has(file) ? '• ' : ''}{file.split('/').pop()}</span>
+            {savedFlash === file && (
+              <span style={{ color: '#6c9', fontSize: 10, opacity: 1, transition: 'opacity 1.5s' }}>Saved</span>
+            )}
             <span
               onClick={(e) => { e.stopPropagation(); closeFile(file) }}
               style={{ color: '#666', fontSize: 14, lineHeight: 1 }}

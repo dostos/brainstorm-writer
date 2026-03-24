@@ -138,14 +138,26 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     try {
       const result = await window.electronAPI.findProjectPdf(projectPath)
       if (result) {
+        // Save scroll position before replacing the document
+        const savedScrollTop = scrollContainerRef.current?.scrollTop ?? 0
         const doc = await pdfjsLib.getDocument({ data: new Uint8Array(result.buffer) }).promise
-        setPdfDoc(doc)
+        // Destroy previous document to release memory
+        setPdfDoc((prev) => {
+          prev?.destroy()
+          return doc
+        })
         setTotalPages(doc.numPages)
         setCurrentPage(1)
         setManualScale(null)
         renderedPagesRef.current.clear()
         pageDimensionsRef.current.clear()
         tryParseSynctex(result.path)
+        // Restore scroll position after React has flushed the new render
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = savedScrollTop
+          }
+        })
       }
     } catch { /* no PDF found */ }
   }, [projectPath, tryParseSynctex])

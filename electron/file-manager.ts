@@ -10,6 +10,7 @@ export interface FileNode {
 
 export class FileManager {
   private watcher: fs.FSWatcher | null = null
+  private watchDebounceTimers: Map<string, NodeJS.Timeout> = new Map()
 
   async scanProject(dirPath: string): Promise<FileNode[]> {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true })
@@ -148,7 +149,14 @@ export class FileManager {
     this.stopWatching()
     this.watcher = fs.watch(dirPath, { recursive: true }, (_event, filename) => {
       if (filename) {
-        onChange(path.join(dirPath, filename))
+        const fullPath = path.join(dirPath, filename)
+        const existing = this.watchDebounceTimers.get(fullPath)
+        if (existing) clearTimeout(existing)
+        const timer = setTimeout(() => {
+          this.watchDebounceTimers.delete(fullPath)
+          onChange(fullPath)
+        }, 500)
+        this.watchDebounceTimers.set(fullPath, timer)
       }
     })
   }
@@ -158,5 +166,9 @@ export class FileManager {
       this.watcher.close()
       this.watcher = null
     }
+    for (const timer of this.watchDebounceTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.watchDebounceTimers.clear()
   }
 }
