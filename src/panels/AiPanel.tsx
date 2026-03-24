@@ -28,16 +28,23 @@ export function parseAiResponse(text: string): {
   suggestions: string
   raw: string
 } {
-  const revisedMatch = text.match(/===\s*REVISED\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*SUGGESTIONS\s*===|$)/)
-  if (!revisedMatch) {
+  // Split on section headers: === REVISED ===, === COMMENTS ===, === SUGGESTIONS ===
+  const sections: Record<string, string> = {}
+  const parts = text.split(/\n*={3}\s*(REVISED|COMMENTS|SUGGESTIONS)\s*={3}\n*/)
+  for (let i = 1; i < parts.length; i += 2) {
+    const key = parts[i].toLowerCase()
+    const content = (parts[i + 1] || '').trim()
+    sections[key] = content
+  }
+  if (!sections['revised']) {
     return { revised: '', comments: '', suggestions: '', raw: stripCodeFences(text) }
   }
-  const commentsMatch = text.match(/===\s*COMMENTS\s*===\s*([\s\S]*?)(?===\s*SUGGESTIONS\s*===|===\s*REVISED\s*===|$)/)
-  const suggestionsMatch = text.match(/===\s*SUGGESTIONS\s*===\s*([\s\S]*?)(?===\s*COMMENTS\s*===|===\s*REVISED\s*===|$)/)
+  // Fake revisedMatch for the return below
+  const revisedMatch = true
   return {
-    revised: stripCodeFences(revisedMatch[1].trim()),
-    comments: commentsMatch ? commentsMatch[1].trim() : '',
-    suggestions: suggestionsMatch ? suggestionsMatch[1].trim() : '',
+    revised: stripCodeFences(sections['revised'] || ''),
+    comments: sections['comments'] || '',
+    suggestions: sections['suggestions'] || '',
     raw: text,
   }
 }

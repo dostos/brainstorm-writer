@@ -332,6 +332,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
         const parsed = parseAiResponse(result.text)
         const suggested = stripCodeFences(parsed.revised || result.text)
         const comments = parsed.comments || ''
+        console.log('[Editor] AI done, showing inline diff. revised:', suggested.slice(0, 50), 'comments:', comments.slice(0, 50))
 
         useEditorStore.getState().showInlineDiff({
           file,

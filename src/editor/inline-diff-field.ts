@@ -68,10 +68,10 @@ export function createInlineDiffField(
       return Decoration.none
     },
     update(decorations, tr) {
-      // Check for show/clear effects
       for (const effect of tr.effects) {
         if (effect.is(showInlineDiffEffect)) {
           const { from, to, original, suggested, comments, provider } = effect.value
+          console.log('[InlineDiff] showing diff widget at', from, '-', to, 'provider:', provider, 'suggested length:', suggested.length)
           const widget = new InlineDiffWidget(original, suggested, comments, provider, onAccept, onReject)
           // Place the widget after the selection
           return Decoration.set([
