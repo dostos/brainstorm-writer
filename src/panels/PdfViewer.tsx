@@ -178,17 +178,19 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   // Capture PDF text selection → push to editor store for AI panel
   const { setSelection } = useEditorStore()
   useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
     const handler = () => {
-      const sel = window.getSelection()
-      const text = sel?.toString().trim()
-      if (text && text.length > 0) {
+      const sel = document.getSelection()
+      if (!sel || sel.isCollapsed) return
+      const text = sel.toString().trim()
+      if (!text) return
+      // Check if selection is inside our PDF container
+      const anchor = sel.anchorNode
+      if (anchor && scrollContainerRef.current?.contains(anchor)) {
         setSelection({ text, from: -1, to: -1 }) // from/to = -1 indicates PDF source
       }
     }
-    container.addEventListener('mouseup', handler)
-    return () => container.removeEventListener('mouseup', handler)
+    document.addEventListener('mouseup', handler)
+    return () => document.removeEventListener('mouseup', handler)
   }, [setSelection])
 
   // Watch for PDF changes
