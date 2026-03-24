@@ -61,6 +61,12 @@ async function renderPage(
   await textLayer.render()
 }
 
+// Clear canvas memory for a page container while preserving its dimensions (placeholder)
+function clearPageCanvas(container: HTMLDivElement) {
+  // Keep width/height so scrollbar remains accurate; just remove child nodes
+  container.innerHTML = ''
+}
+
 export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [totalPages, setTotalPages] = useState(0)
@@ -74,6 +80,17 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const singlePageRef = useRef<HTMLDivElement>(null)
 
+  // Track which pages have been rendered in continuous mode
+  const renderedPagesRef = useRef<Set<number>>(new Set())
+  // Store page viewport dimensions so placeholders have correct sizes before render
+  const pageDimensionsRef = useRef<Map<number, { width: number; height: number }>>(new Map())
+  // IntersectionObserver instance
+  const intersectionObserverRef = useRef<IntersectionObserver | null>(null)
+  // Debounce timer for observer callbacks
+  const observerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ref to always have current effectiveScale inside observer callbacks
+  const effectiveScaleRef = useRef<number>(1.2)
+
   // Compute auto-fit scale based on container width and first page
   const computeFitScale = useCallback(async () => {
     if (!pdfDoc || !scrollContainerRef.current) return null
@@ -85,6 +102,11 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
 
   // Determine effective scale
   const effectiveScale = manualScale ?? scale ?? 1.2
+
+  // Keep ref in sync so observer callbacks always see latest scale
+  useEffect(() => {
+    effectiveScaleRef.current = effectiveScale
+  }, [effectiveScale])
 
   // Auto-fit on load and resize
   useEffect(() => {
@@ -121,6 +143,8 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
         setTotalPages(doc.numPages)
         setCurrentPage(1)
         setManualScale(null)
+        renderedPagesRef.current.clear()
+        pageDimensionsRef.current.clear()
         tryParseSynctex(result.path)
       }
     } catch { /* no PDF found */ }
@@ -130,23 +154,186 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
     loadPdf().catch(console.error)
   }, [loadPdf])
 
-  // Render pages with debounce (300ms) for smooth zoom
+  // Pre-fetch page dimensions (at scale=1) for all pages so placeholders have correct sizes.
+  // We do this once when pdfDoc is available, cheaply, without rendering.
   useEffect(() => {
-    if (!pdfDoc || scale === null) return
-    const render = async () => {
-      if (continuousMode) {
-        for (let i = 1; i <= pdfDoc.numPages; i++) {
-          const container = pageContainerRefs.current.get(i)
-          if (!container) continue
-          await renderPage(pdfDoc, i, container, effectiveScale)
+    if (!pdfDoc) return
+    pageDimensionsRef.current.clear()
+    let cancelled = false
+    ;(async () => {
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        if (cancelled) break
+        const page = await pdfDoc.getPage(i)
+        const vp = page.getViewport({ scale: 1.0 })
+        pageDimensionsRef.current.set(i, { width: vp.width, height: vp.height })
+      }
+    })().catch(console.error)
+    return () => { cancelled = true }
+  }, [pdfDoc])
+
+  // Apply placeholder dimensions to all continuous-mode page containers whenever scale changes.
+  // This keeps the scrollbar proportions accurate even before a page is rendered.
+  useEffect(() => {
+    if (!continuousMode) return
+    pageContainerRefs.current.forEach((container, pageNum) => {
+      const dims = pageDimensionsRef.current.get(pageNum)
+      if (dims && container.innerHTML === '') {
+        container.style.width = `${dims.width * effectiveScale}px`
+        container.style.height = `${dims.height * effectiveScale}px`
+      }
+    })
+  }, [effectiveScale, continuousMode, totalPages])
+
+  // Core: handle IntersectionObserver events for continuous mode
+  const handleIntersections = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (!pdfDoc) return
+
+      const currentScale = effectiveScaleRef.current
+
+      entries.forEach((entry) => {
+        const pageNum = Number((entry.target as HTMLElement).dataset.pageNum)
+        if (!pageNum) return
+
+        if (entry.isIntersecting) {
+          // Page is (near) visible — render if not already rendered at this scale
+          if (!renderedPagesRef.current.has(pageNum)) {
+            const container = pageContainerRefs.current.get(pageNum)
+            if (container) {
+              renderedPagesRef.current.add(pageNum)
+              renderPage(pdfDoc, pageNum, container, currentScale).catch(() => {
+                renderedPagesRef.current.delete(pageNum)
+              })
+            }
+          }
         }
-      } else if (singlePageRef.current) {
-        await renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale)
+      })
+
+      // After processing intersections, clear pages that are far off-screen (>2 pages away)
+      // Determine the set of currently intersecting page numbers
+      const visiblePages = new Set<number>()
+      // We need to query all observed entries — gather from the current observer
+      const observer = intersectionObserverRef.current
+      if (!observer) return
+
+      // Walk all page refs to find which are currently near-visible via the root margin
+      // We approximate "visible" as any page that has been observed and is intersecting.
+      // To determine far-away pages we compare against the min/max visible page.
+      pageContainerRefs.current.forEach((container, pageNum) => {
+        // Use getBoundingClientRect relative to scroll container
+        const scrollContainer = scrollContainerRef.current
+        if (!scrollContainer) return
+        const scrollRect = scrollContainer.getBoundingClientRect()
+        const pageRect = container.getBoundingClientRect()
+        // Page is within extended viewport (1 page margin = rootMargin handles this)
+        // Here we check if page is within 2-page distance for clearing
+        const viewportTop = scrollRect.top
+        const viewportBottom = scrollRect.bottom
+        const pageHeight = pageRect.height || (pageDimensionsRef.current.get(pageNum)?.height ?? 800) * effectiveScaleRef.current
+        const margin = pageHeight * 2
+
+        if (pageRect.bottom >= viewportTop - margin && pageRect.top <= viewportBottom + margin) {
+          visiblePages.add(pageNum)
+        }
+      })
+
+      // Clear pages that are far away and currently rendered
+      renderedPagesRef.current.forEach((pageNum) => {
+        if (!visiblePages.has(pageNum)) {
+          const container = pageContainerRefs.current.get(pageNum)
+          if (container) {
+            clearPageCanvas(container)
+            // Restore placeholder dimensions
+            const dims = pageDimensionsRef.current.get(pageNum)
+            if (dims) {
+              container.style.width = `${dims.width * effectiveScaleRef.current}px`
+              container.style.height = `${dims.height * effectiveScaleRef.current}px`
+            }
+          }
+          renderedPagesRef.current.delete(pageNum)
+        }
+      })
+    },
+    [pdfDoc],
+  )
+
+  // Debounced version of handleIntersections
+  const debouncedHandleIntersections = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (observerDebounceRef.current) clearTimeout(observerDebounceRef.current)
+      observerDebounceRef.current = setTimeout(() => {
+        handleIntersections(entries)
+      }, 50)
+    },
+    [handleIntersections],
+  )
+
+  // Set up IntersectionObserver in continuous mode
+  useEffect(() => {
+    if (!continuousMode || !pdfDoc || !scrollContainerRef.current) return
+    if (scale === null) return // wait for scale to be computed
+
+    // Disconnect previous observer
+    intersectionObserverRef.current?.disconnect()
+    intersectionObserverRef.current = null
+
+    // Clear rendered set — scale may have changed, need re-render
+    renderedPagesRef.current.clear()
+
+    // Clear all page containers to placeholders
+    pageContainerRefs.current.forEach((container, pageNum) => {
+      clearPageCanvas(container)
+      const dims = pageDimensionsRef.current.get(pageNum)
+      if (dims) {
+        container.style.width = `${dims.width * effectiveScale}px`
+        container.style.height = `${dims.height * effectiveScale}px`
+      }
+    })
+
+    // rootMargin: observe pages within 1 page height above/below viewport.
+    // We use a fixed pixel estimate for the initial margin; the observer will
+    // fire immediately for any already-visible pages.
+    const approxPageHeight = (() => {
+      const dims = pageDimensionsRef.current.get(1)
+      return dims ? Math.round(dims.height * effectiveScale) : 1000
+    })()
+
+    const observer = new IntersectionObserver(debouncedHandleIntersections, {
+      root: scrollContainerRef.current,
+      rootMargin: `${approxPageHeight}px 0px ${approxPageHeight}px 0px`,
+      threshold: 0,
+    })
+
+    intersectionObserverRef.current = observer
+
+    // Observe all page containers
+    pageContainerRefs.current.forEach((container) => {
+      observer.observe(container)
+    })
+
+    return () => {
+      observer.disconnect()
+      intersectionObserverRef.current = null
+      if (observerDebounceRef.current) {
+        clearTimeout(observerDebounceRef.current)
       }
     }
-    const timer = setTimeout(() => render().catch(console.error), 200)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfDoc, continuousMode, effectiveScale, scale, debouncedHandleIntersections])
+
+  // Single-page mode: render with debounce (300ms) for smooth zoom
+  useEffect(() => {
+    if (!pdfDoc || scale === null || continuousMode) return
+    const timer = setTimeout(() => {
+      if (singlePageRef.current) {
+        renderPage(pdfDoc, currentPage, singlePageRef.current, effectiveScale).catch(console.error)
+      }
+    }, 200)
     return () => clearTimeout(timer)
-  }, [pdfDoc, effectiveScale, continuousMode, totalPages, scale, currentPage])
+  }, [pdfDoc, effectiveScale, continuousMode, scale, currentPage])
+
+  // When switching from single-page to continuous mode, re-observe all containers
+  // (handled by the IntersectionObserver effect above via continuousMode dependency)
 
   // Double-click: find the selected/clicked text in .tex source files and open
   const handlePageClick = useCallback(async (pageNum: number, e: React.MouseEvent<HTMLDivElement>) => {
@@ -350,9 +537,23 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
               <div
                 key={pageNum}
+                data-page-num={pageNum}
                 ref={(el) => {
-                  if (el) pageContainerRefs.current.set(pageNum, el)
-                  else pageContainerRefs.current.delete(pageNum)
+                  if (el) {
+                    pageContainerRefs.current.set(pageNum, el)
+                    // Apply placeholder dimensions immediately if available
+                    const dims = pageDimensionsRef.current.get(pageNum)
+                    if (dims && el.innerHTML === '') {
+                      el.style.width = `${dims.width * effectiveScale}px`
+                      el.style.height = `${dims.height * effectiveScale}px`
+                    }
+                    // Re-observe with current observer if it exists
+                    if (intersectionObserverRef.current) {
+                      intersectionObserverRef.current.observe(el)
+                    }
+                  } else {
+                    pageContainerRefs.current.delete(pageNum)
+                  }
                 }}
                 onDoubleClick={(e) => handlePageClick(pageNum, e)}
                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', background: '#fff' }}
