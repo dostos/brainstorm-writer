@@ -202,9 +202,8 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     }),
   ], [setSelection, markDirty])
 
-  // Create/recreate EditorView with given content — destroy+recreate approach
-  // but save/restore EditorState per file for undo history preservation
-  const mountEditor = useCallback((content: string) => {
+  // Create/recreate EditorView — takes file path explicitly to avoid stale closures
+  const mountEditor = useCallback((file: string, content: string) => {
     if (!containerRef.current) return
 
     // Save current state before destroying
@@ -219,7 +218,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     }
 
     // Check if we have a saved state for this file (preserves undo history)
-    const savedState = activeFile ? editorStatesRef.current.get(activeFile) : null
+    const savedState = editorStatesRef.current.get(file)
 
     const state = savedState ?? EditorState.create({
       doc: content,
@@ -233,13 +232,11 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     editorViewRef.current = view
 
     // Restore scroll
-    if (activeFile) {
-      const savedScroll = scrollPositionsRef.current.get(activeFile) ?? 0
-      requestAnimationFrame(() => {
-        view.scrollDOM.scrollTop = savedScroll
-      })
-    }
-  }, [activeFile, buildExtensions])
+    const savedScroll = scrollPositionsRef.current.get(file) ?? 0
+    requestAnimationFrame(() => {
+      view.scrollDOM.scrollTop = savedScroll
+    })
+  }, [buildExtensions])
 
   // Track previous activeFile
   const previousActiveFileRef = useRef<string | null>(null)
@@ -253,16 +250,16 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
 
     // If we have cached content or saved state, mount immediately
     if (editorStatesRef.current.has(activeFile) || fileContents.current[activeFile]) {
-      mountEditor(fileContents.current[activeFile] || '')
+      mountEditor(activeFile, fileContents.current[activeFile] || '')
       return
     }
 
     // First open: load file content
     const load = async () => {
       const content = await window.electronAPI.readFile(activeFile)
-      if (useEditorStore.getState().activeFile !== activeFile) return // B4: abort if switched away
+      if (useEditorStore.getState().activeFile !== activeFile) return
       fileContents.current[activeFile] = content
-      mountEditor(content)
+      mountEditor(activeFile, content)
     }
     load()
   }, [activeFile, mountEditor])
