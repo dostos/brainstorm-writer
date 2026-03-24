@@ -65,6 +65,16 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const { session } = require('electron')
+  session.defaultSession.webRequest.onHeadersReceived((details: { responseHeaders?: Record<string, string[]> }, callback: (response: { responseHeaders: Record<string, string[]> }) => void) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:*"],
+      },
+    })
+  })
+
   createWindow()
 
   ipcMain.handle('settings:get', () => settingsManager.getAll())
