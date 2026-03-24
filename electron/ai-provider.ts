@@ -179,8 +179,11 @@ export class AiProviderManager {
         return
       }
 
+      // Use shell: true to inherit full PATH from user's shell profile
+      // This is needed because Electron GUI apps on macOS don't get .zshrc PATH
       const proc = spawn(cliPath, args, {
-        env: { ...process.env, TERM: 'dumb', PATH: process.env.PATH },
+        shell: true,
+        env: { ...process.env, TERM: 'dumb' },
         stdio: ['pipe', 'pipe', 'pipe'],
       })
 
@@ -202,23 +205,23 @@ export class AiProviderManager {
         })
       })
 
+      // Accumulate stderr for error reporting on non-zero exit
+      let stderrOutput = ''
       proc.stderr?.on('data', (data: Buffer) => {
-        // Some CLIs write progress to stderr, ignore unless it's an error
-        const text = data.toString()
-        if (text.toLowerCase().includes('error')) {
-          window.webContents.send('ai:stream', {
-            provider: providerId, type: 'error', error: text,
-          })
-        }
+        stderrOutput += data.toString()
       })
 
       proc.on('close', (code) => {
         this.childProcesses.delete(providerId)
         if (!controller.signal.aborted) {
           if (code !== 0) {
+            // Show accumulated stderr or generic message
+            const errorMsg = stderrOutput.trim()
+              ? stderrOutput.trim().slice(-500)
+              : `CLI exited with code ${code}`
             window.webContents.send('ai:stream', {
               provider: providerId, type: 'error',
-              error: `CLI exited with code ${code}`,
+              error: errorMsg,
             })
           } else {
             window.webContents.send('ai:stream', { provider: providerId, type: 'done' })
