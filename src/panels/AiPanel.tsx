@@ -59,32 +59,7 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const lastPromptRef = useRef<string>('')
   const lastSelectionRef = useRef<{ text: string; from: number; to: number } | null>(null)
 
-  // Track which provider was first to finish (to add its response to history)
-  const firstDoneRef = useRef<string | null>(null)
-
-  // Listen for AI streaming events (with cleanup to avoid listener leaks)
-  // Use refs to avoid re-registering the listener on every render
-  useEffect(() => {
-    const cleanup = window.electronAPI.onAiStream((data) => {
-      if (data.type === 'done') {
-        const store = useAiStore.getState()
-        // Add the first provider's response to conversation history
-        if (firstDoneRef.current === null) {
-          firstDoneRef.current = data.provider
-          const providerResult = store.results[data.provider]
-          if (providerResult) {
-            store.addToHistory('assistant', providerResult.text)
-          }
-        }
-        store.finishProvider(data.provider)
-      } else if (data.type === 'error') {
-        useAiStore.getState().finishProvider(data.provider, data.error)
-      } else if (data.type === 'delta') {
-        useAiStore.getState().appendChunk(data.provider, data.text ?? '')
-      }
-    })
-    return cleanup
-  }, [])
+  // AI stream listener is now in App.tsx (always mounted, even when this tab is inactive)
 
   const handleSend = useCallback(async (userPrompt: string) => {
     lastPromptRef.current = userPrompt

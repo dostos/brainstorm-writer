@@ -233,6 +233,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
     // Inline prompt field — onSubmit triggers AI request; onCancel hides bar
     createInlinePromptField(
       async (prompt, selectedText) => {
+        console.log('[Editor] inline prompt submitted:', prompt, 'text:', selectedText.slice(0, 30))
         editorViewRef.current?.dispatch({ effects: hidePromptBarEffect.of(undefined) })
         await handleInlineAiRequestRef.current(prompt, selectedText)
       },
@@ -245,6 +246,7 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
       key: 'Mod-k',
       run: (view) => {
         const sel = view.state.selection.main
+        console.log('[Editor] Cmd+K pressed, selection:', sel.from, '-', sel.to)
         if (sel.from === sel.to) return false
         const text = view.state.doc.sliceString(sel.from, sel.to)
         view.dispatch({
@@ -293,9 +295,10 @@ export const Editor: React.FC<IDockviewPanelProps> = () => {
   const handleInlineAiRequestRef = useRef(async (_prompt: string, _selectedText: string) => {})
 
   const handleInlineAiRequest = useCallback(async (prompt: string, selectedText: string) => {
+    console.log('[Editor] handleInlineAiRequest called:', prompt)
     const view = editorViewRef.current
     const file = useEditorStore.getState().activeFile
-    if (!view || !file) return
+    if (!view || !file) { console.log('[Editor] no view or file, aborting'); return }
 
     const sel = view.state.selection.main
     const settings = useSettingsStore.getState()

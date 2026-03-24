@@ -10,6 +10,7 @@ import { BuildLog } from './components/BuildLog'
 import { useSettingsStore } from './stores/settings-store'
 import { useProjectStore } from './stores/project-store'
 import { useBuildStore } from './stores/build-store'
+import { useAiStore } from './stores/ai-store'
 
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   fileTree: FileTree,
@@ -40,6 +41,39 @@ export default function App() {
       } catch { /* no last project or handler not ready */ }
     }, 200)
     return () => clearTimeout(timer)
+  }, [])
+
+  // Global AI stream listener — must be in App (always mounted), not AiPanel (may be inactive tab)
+  const firstDoneRef = useRef<string | null>(null)
+  useEffect(() => {
+    const cleanup = window.electronAPI.onAiStream((data) => {
+      if (data.type === 'done') {
+        const store = useAiStore.getState()
+        if (firstDoneRef.current === null) {
+          firstDoneRef.current = data.provider
+          const providerResult = store.results[data.provider]
+          if (providerResult) {
+            store.addToHistory('assistant', providerResult.text)
+          }
+        }
+        store.finishProvider(data.provider)
+      } else if (data.type === 'error') {
+        useAiStore.getState().finishProvider(data.provider, data.error)
+      } else if (data.type === 'delta') {
+        useAiStore.getState().appendChunk(data.provider, data.text ?? '')
+      }
+    })
+    return cleanup
+  }, [])
+
+  // Reset firstDoneRef when a new request starts
+  useEffect(() => {
+    const unsub = useAiStore.subscribe((state, prev) => {
+      if (state.isLoading && !prev.isLoading) {
+        firstDoneRef.current = null
+      }
+    })
+    return unsub
   }, [])
 
   // Set up build log IPC listeners
