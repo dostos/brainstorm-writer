@@ -78,7 +78,14 @@ app.whenReady().then(() => {
   createWindow()
 
   ipcMain.handle('settings:get', () => settingsManager.getAll())
-  ipcMain.handle('settings:set', (_e, settings) => settingsManager.set(settings))
+  ipcMain.handle('settings:set', (_e, settings) => {
+    const allowedKeys = ['systemPrompt', 'contextTemplate', 'contextScope', 'savedPrompts', 'models', 'providerModes', 'timeout']
+    const filtered: Record<string, unknown> = {}
+    for (const key of allowedKeys) {
+      if (key in settings) filtered[key] = settings[key]
+    }
+    settingsManager.set(filtered as any)
+  })
   ipcMain.handle('settings:get-keys', () => {
     const keys = settingsManager.getApiKeys()
     return {
