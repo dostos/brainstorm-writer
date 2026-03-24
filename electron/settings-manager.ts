@@ -101,6 +101,14 @@ export class SettingsManager {
     return value
   }
 
+  getLastProject(): string | null {
+    return this.store.get('lastProject') || null
+  }
+
+  setLastProject(projectPath: string): void {
+    this.store.set('lastProject', projectPath)
+  }
+
   private decrypt(value: string): string {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { safeStorage } = require('electron')

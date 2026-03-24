@@ -7,6 +7,7 @@ import { PdfViewer } from './panels/PdfViewer'
 import { AiPanel } from './panels/AiPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { useSettingsStore } from './stores/settings-store'
+import { useProjectStore } from './stores/project-store'
 
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   fileTree: FileTree,
@@ -21,6 +22,13 @@ export default function App() {
 
   useEffect(() => {
     useSettingsStore.getState().loadFromMain()
+    // Auto-load last opened project
+    window.electronAPI.getLastProject().then((result) => {
+      if (result) {
+        useProjectStore.getState().setProject(result.projectPath, result.tree)
+        window.electronAPI.watchProject(result.projectPath)
+      }
+    })
   }, [])
 
   const onReady = useCallback((event: DockviewReadyEvent) => {

@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('electronAPI', {
   // File operations
   openProject: () => ipcRenderer.invoke('file:open-project'),
+  getLastProject: () => ipcRenderer.invoke('file:get-last-project'),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
   readFileBuffer: (filePath: string) => ipcRenderer.invoke('file:read-buffer', filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke('file:write', filePath, content),

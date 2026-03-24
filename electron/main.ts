@@ -44,7 +44,19 @@ app.whenReady().then(() => {
     if (result.canceled || result.filePaths.length === 0) return null
     const projectPath = result.filePaths[0]
     const tree = await fileManager.scanProject(projectPath)
+    settingsManager.setLastProject(projectPath)
     return { projectPath, tree }
+  })
+
+  ipcMain.handle('file:get-last-project', async () => {
+    const lastPath = settingsManager.getLastProject()
+    if (!lastPath) return null
+    try {
+      const tree = await fileManager.scanProject(lastPath)
+      return { projectPath: lastPath, tree }
+    } catch {
+      return null
+    }
   })
 
   ipcMain.handle('file:read', async (_e, filePath: string) => fileManager.readFile(filePath))

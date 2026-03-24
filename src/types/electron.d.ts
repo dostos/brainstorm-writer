@@ -1,6 +1,7 @@
 export interface ElectronAPI {
   // File operations
   openProject: () => Promise<{ projectPath: string; tree: any[] } | null>
+  getLastProject: () => Promise<{ projectPath: string; tree: any[] } | null>
   readFile: (filePath: string) => Promise<string>
   readFileBuffer: (filePath: string) => Promise<ArrayBuffer>
   writeFile: (filePath: string, content: string) => Promise<void>
