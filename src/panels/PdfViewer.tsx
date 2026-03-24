@@ -110,8 +110,10 @@ export const PdfViewer: React.FC<IDockviewPanelProps> = () => {
           style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}>+</button>
       </div>
       {/* PDF canvas */}
-      <div ref={containerRef} style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', padding: 12 }}>
-        <canvas ref={canvasRef} onClick={handleCanvasClick} style={{ cursor: 'crosshair' }} />
+      <div ref={containerRef} style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', minHeight: '100%' }}>
+          <canvas ref={canvasRef} onClick={handleCanvasClick} style={{ cursor: 'crosshair', display: 'block' }} />
+        </div>
       </div>
     </div>
   )

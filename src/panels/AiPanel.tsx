@@ -15,16 +15,17 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
 
   // Listen for AI streaming events (with cleanup to avoid listener leaks)
+  // Use refs to avoid re-registering the listener on every render
   useEffect(() => {
     const cleanup = window.electronAPI.onAiStream((data) => {
       if (data.done) {
-        finishProvider(data.provider, data.error)
+        useAiStore.getState().finishProvider(data.provider, data.error)
       } else {
-        appendChunk(data.provider, data.chunk)
+        useAiStore.getState().appendChunk(data.provider, data.chunk)
       }
     })
     return cleanup
-  }, [appendChunk, finishProvider])
+  }, [])
 
   const handleSend = useCallback(async (userPrompt: string) => {
     if (!selection) return
@@ -60,14 +61,21 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
       formattedContext += '\n\n' + context
     }
 
-    await window.electronAPI.aiRequest({
-      providers: selectedProviders,
-      systemPrompt,
-      context: formattedContext,
-      selectedText: selection.text,
-      userPrompt,
-      models,
-    })
+    try {
+      await window.electronAPI.aiRequest({
+        providers: selectedProviders,
+        systemPrompt,
+        context: formattedContext,
+        selectedText: selection.text,
+        userPrompt,
+        models,
+      })
+    } catch (err: any) {
+      // If the IPC call itself fails, mark all providers as done with error
+      for (const p of selectedProviders) {
+        useAiStore.getState().finishProvider(p, err.message || 'Request failed')
+      }
+    }
   }, [selection, selectedProviders, systemPrompt, contextScope, contextTemplate, models, startRequest])
 
   const handleApply = useCallback((text: string) => {
@@ -113,7 +121,18 @@ export const AiPanel: React.FC<IDockviewPanelProps> = () => {
       </div>
 
       {/* Prompt input */}
-      <PromptInput onSubmit={handleSend} disabled={isLoading || !selection} />
+      <PromptInput onSubmit={handleSend} disabled={isLoading} />
+      {isLoading && (
+        <button
+          onClick={() => {
+            window.electronAPI.cancelAiRequest()
+            useAiStore.getState().clearResults()
+          }}
+          style={{ background: '#c66', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}
+        >
+          Cancel
+        </button>
+      )}
 
       {/* Results */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
