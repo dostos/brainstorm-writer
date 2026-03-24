@@ -2,9 +2,14 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
 import { SettingsManager } from './settings-manager'
 import { FileManager } from './file-manager'
+import { AiProviderManager } from './ai-provider'
+import { SynctexParser, SynctexData } from './synctex-parser'
 
 const settingsManager = new SettingsManager()
 const fileManager = new FileManager()
+const aiManager = new AiProviderManager()
+const synctexParser = new SynctexParser()
+let synctexData: SynctexData | null = null
 
 let mainWindow: BrowserWindow | null = null
 
@@ -50,6 +55,30 @@ app.whenReady().then(() => {
     fileManager.watch(projectPath, (filePath) => {
       mainWindow?.webContents.send('file:changed', filePath)
     })
+  })
+
+  ipcMain.handle('ai:request', async (_e, params) => {
+    const keys = settingsManager.getApiKeys()
+    await aiManager.sendToAll(params, keys as Record<string, string | undefined>, mainWindow!)
+  })
+
+  ipcMain.handle('ai:cancel', () => {
+    aiManager.cancelAll()
+  })
+
+  ipcMain.handle('synctex:parse', async (_e, synctexPath: string) => {
+    synctexData = await synctexParser.parse(synctexPath)
+    return synctexData
+  })
+
+  ipcMain.handle('synctex:forward', async (_e, file: string, line: number) => {
+    if (!synctexData) return null
+    return synctexParser.forwardSearch(synctexData, file, line)
+  })
+
+  ipcMain.handle('synctex:inverse', async (_e, page: number, x: number, y: number) => {
+    if (!synctexData) return null
+    return synctexParser.inverseSearch(synctexData, page, x, y)
   })
 })
 
