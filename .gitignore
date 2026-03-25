@@ -4,3 +4,4 @@ dist-electron/
 release/
 .superpowers/
 *.log
+test-results/
