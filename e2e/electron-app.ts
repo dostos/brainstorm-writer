@@ -51,10 +51,11 @@ export const test = base.extend<TestFixtures>({
     }
 
     const app = await electron.launch({
-      args: [mainPath],
+      args: ['--disable-gpu', '--enable-logging', mainPath],
       env: {
         ...process.env,
         NODE_ENV: 'test',
+        ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       },
     })
 

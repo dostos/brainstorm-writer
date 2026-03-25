@@ -2,12 +2,14 @@ import { test, expect } from './electron-app'
 
 test.describe('Inline AI Editor', () => {
   test('Cmd+K shows prompt bar when text is selected', async ({ window }) => {
-    // Wait for app to fully load
     await window.waitForTimeout(2000)
 
-    // Check if an editor is open (may have auto-loaded last project)
     const editorContainer = window.locator('.cm-editor')
-    if (await editorContainer.isVisible()) {
+    if (!(await editorContainer.isVisible())) {
+      test.skip()
+      return
+    }
+    {
       // Click in the editor to focus it
       await editorContainer.click()
       await window.waitForTimeout(500)

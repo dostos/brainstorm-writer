@@ -25,11 +25,12 @@ function isPathInsideProject(filePath: string): boolean {
 }
 
 function createWindow() {
-  // Restore last window bounds
-  const bounds = settingsManager.getWindowBounds()
+  const isTest = process.env.NODE_ENV === 'test'
+  const bounds = isTest ? { width: 1200, height: 800 } : settingsManager.getWindowBounds()
 
   mainWindow = new BrowserWindow({
     ...bounds,
+    show: !isTest, // Hidden window in test mode — no popup
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
