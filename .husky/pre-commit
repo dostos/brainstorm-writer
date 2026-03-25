@@ -1,0 +1,2 @@
+#!/bin/sh
+npx vitest run --reporter=dot
